@@ -2,10 +2,10 @@
 """
 A股ETF动量轮动策略 - 每日信号推送
 核心逻辑：线性回归斜率 × R²拟合度
-数据源：Yahoo Finance（海外服务器稳定访问）
+数据源：新浪财经API（海外访问稳定）
 """
 
-import yfinance as yf
+import requests
 import pandas as pd
 import numpy as np
 import math
@@ -14,76 +14,68 @@ import os
 from datetime import datetime
 
 # 策略配置
-# Yahoo Finance 代码格式：沪市.SS，深市.SZ
 ETF_POOL = {
-    '518880.SS': '黄金ETF',
-    '513100.SS': '纳指ETF',
-    '159915.SZ': '创业板ETF',
-    '510300.SS': '沪深300ETF',
+    'sh518880': '黄金ETF',      # 上海
+    'sh513100': '纳指ETF',      # 上海
+    'sz159915': '创业板ETF',    # 深圳
+    'sh510300': '沪深300ETF',   # 上海
 }
 
 LOOKBACK_DAYS = 25  # 回看窗口
 HISTORY_FILE = 'history.json'  # 历史记录文件
 
 
-def get_etf_data(etf_codes: list) -> dict:
-    """获取ETF日线数据"""
-    # 计算开始日期（多取一些天数确保有足够数据）
-    start_date = datetime.now() - pd.Timedelta(days=LOOKBACK_DAYS * 3)
-
-    # yfinance 批量下载
-    data = yf.download(etf_codes, start=start_date, progress=False)
-
-    # 返回字典格式
-    result = {}
-    for code in etf_codes:
-        if code in data.columns:
-            # yfinance 返回 MultiIndex，需要提取单个ETF的数据
-            try:
-                if isinstance(data.columns, pd.MultiIndex):
-                    df = data['Close'][code]
-                else:
-                    df = data['Close']
-                result[code] = df
-            except:
-                pass
-    return result
-
-
-def calculate_score(prices: pd.Series) -> tuple:
+def get_sina_kline(code: str, days: int = 30) -> list:
     """
-    计算动量得分
-    返回: (score, annualized_returns, r_squared)
+    从新浪财经API获取ETF日K线数据
+    code格式: sh510300 或 sz159915
+    返回收盘价列表
     """
-    # 取最近N日收盘价
-    df = prices.tail(LOOKBACK_DAYS).dropna()
+    url = 'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData'
+    params = {
+        'symbol': code,
+        'scale': '240',  # 日K线
+        'datalen': days,
+    }
 
-    if len(df) < LOOKBACK_DAYS:
-        # 数据不足，返回 None
+    try:
+        resp = requests.get(url, params=params, timeout=15)
+        data = resp.json()
+
+        if not data or len(data) < LOOKBACK_DAYS:
+            return None
+
+        # 提取收盘价
+        prices = [float(item['close']) for item in data]
+        return prices
+
+    except Exception as e:
+        print(f"获取 {code} 失败: {e}")
+        return None
+
+
+def calculate_score(prices: list) -> tuple:
+    """计算动量得分"""
+    prices = prices[-LOOKBACK_DAYS:]
+    if len(prices) < LOOKBACK_DAYS:
         return None, None, None
 
-    # 对数价格线性回归
-    y = np.log(df.values)
+    y = np.log(prices)
     x = np.arange(len(y))
     slope, intercept = np.polyfit(x, y, 1)
 
-    # 年化收益率
     annualized_returns = math.pow(math.exp(slope), 250) - 1
 
-    # R²拟合度
     y_pred = slope * x + intercept
     ss_res = sum((y - y_pred) ** 2)
     ss_tot = (len(y) - 1) * np.var(y, ddof=1)
     r_squared = 1 - (ss_res / ss_tot)
 
-    # 综合得分
     score = annualized_returns * r_squared
-
     return score, annualized_returns, r_squared
 
 
 def load_history() -> dict:
-    """加载历史记录"""
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -91,22 +83,18 @@ def load_history() -> dict:
 
 
 def save_history(data: dict):
-    """保存历史记录"""
     with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def compare_with_last(current_ranking: list, history: dict) -> dict:
-    """对比上次排序结果"""
     today = datetime.now().strftime('%Y-%m-%d')
-
     last_record = history.get('last_result', {})
     last_date = last_record.get('date', '')
     last_ranking = last_record.get('ranking', [])
 
     changes = {
         'is_new': len(last_ranking) == 0,
-        'date_changed': last_date != today,
         'top_changed': False,
         'ranking_changed': False,
         'changes_detail': []
@@ -133,7 +121,6 @@ def compare_with_last(current_ranking: list, history: dict) -> dict:
 
 
 def format_output(ranking: list, changes: dict) -> str:
-    """格式化输出内容"""
     today = datetime.now().strftime('%Y-%m-%d')
 
     lines = [
@@ -147,31 +134,17 @@ def format_output(ranking: list, changes: dict) -> str:
         lines.append(f"{symbol} {r['name']}: 得分 {r['score']:.4f}")
 
     if changes['is_new']:
-        lines.extend([
-            "",
-            "【变动提示】",
-            "首次运行，无历史对比"
-        ])
+        lines.extend(["", "【变动提示】", "首次运行，无历史对比"])
     elif changes['top_changed'] or changes['ranking_changed']:
-        lines.extend([
-            "",
-            "【变动提示】⚠️ 有变动！"
-        ])
+        lines.extend(["", "【变动提示】⚠️ 有变动！"])
         for detail in changes['changes_detail']:
             lines.append(f"  • {detail}")
     else:
-        lines.extend([
-            "",
-            "【变动提示】",
-            "✅ 与上次一致，无变动"
-        ])
+        lines.extend(["", "【变动提示】", "✅ 与上次一致，无变动"])
 
     top_etf = ranking[0]
-    lines.extend([
-        "",
-        "【建议持仓】",
-        f"👉 {top_etf['name']} ({top_etf['code'].split('.')[0]})"
-    ])
+    pure_code = top_etf['code'][2:]  # 去掉sh/sz前缀
+    lines.extend(["", "【建议持仓】", f"👉 {top_etf['name']} ({pure_code})"])
 
     return "\n".join(lines)
 
@@ -180,26 +153,21 @@ def main():
     """主函数"""
     print("开始计算ETF动量得分...")
 
-    etf_codes = list(ETF_POOL.keys())
-
-    # 获取数据
-    data = get_etf_data(etf_codes)
-
-    # 计算得分
     results = []
-    for code in etf_codes:
-        if code not in data or data[code] is None:
+
+    for code, name in ETF_POOL.items():
+        prices = get_sina_kline(code, LOOKBACK_DAYS + 5)
+
+        if prices is None or len(prices) < LOOKBACK_DAYS:
             print(f"警告: {code} 数据获取失败")
             continue
 
-        prices = data[code]
         score, ann_ret, r2 = calculate_score(prices)
 
         if score is None:
-            print(f"警告: {code} 数据不足")
+            print(f"警告: {code} 计算失败")
             continue
 
-        name = ETF_POOL.get(code, code)
         results.append({
             'code': code,
             'name': name,
@@ -210,28 +178,22 @@ def main():
 
     if not results:
         print("错误: 没有获取到任何ETF数据")
+        with open('output.txt', 'w', encoding='utf-8') as f:
+            f.write(f"ETF动量轮动信号 ({datetime.now().strftime('%Y-%m-%d')})\n\n数据获取失败，请检查API")
         return
 
-    # 按得分排序
     results.sort(key=lambda x: x['score'], reverse=True)
 
-    # 加载历史并对比
     history = load_history()
     changes = compare_with_last(results, history)
 
-    # 格式化输出
     output = format_output(results, changes)
     print("\n" + output)
 
-    # 保存本次结果
     today = datetime.now().strftime('%Y-%m-%d')
-    history['last_result'] = {
-        'date': today,
-        'ranking': results
-    }
+    history['last_result'] = {'date': today, 'ranking': results}
     save_history(history)
 
-    # 输出到文件
     with open('output.txt', 'w', encoding='utf-8') as f:
         f.write(output)
 
