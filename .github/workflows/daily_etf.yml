@@ -1,4 +1,4 @@
-name: ETF动量轮动信号
+name: ETF_Momentum 动量轮动信号
 
 on:
   schedule:
