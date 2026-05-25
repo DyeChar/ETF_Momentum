@@ -27,11 +27,6 @@ jobs:
         run: |
           python ETF_Momentum.py
 
-      - name: Read output
-        id: output
-        run: |
-          echo "signal=$(cat output.txt)" >> $GITHUB_OUTPUT
-
       - name: Commit history
         run: |
           git config --local user.email "action@github.com"
