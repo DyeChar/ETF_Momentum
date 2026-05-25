@@ -25,7 +25,7 @@ jobs:
 
       - name: Run ETF rotation script
         run: |
-          python etf_rotation.py
+          python ETF_Momentum.py
 
       - name: Read output
         id: output
