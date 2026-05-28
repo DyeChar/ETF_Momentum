@@ -1,34 +1,34 @@
 {
   "last_result": {
-    "date": "2026-05-27",
+    "date": "2026-05-28",
     "ranking": [
       {
         "code": "sh513100",
         "name": "纳指ETF",
-        "score": 3.5407158995945482,
-        "annualized_return": 4.01035968160443,
-        "r_squared": 0.8828923539790848
+        "score": 3.56283662954273,
+        "annualized_return": 4.0324650910446,
+        "r_squared": 0.8835381210007663
       },
       {
         "code": "sz159915",
         "name": "创业板ETF",
-        "score": 1.5049542442098838,
-        "annualized_return": 2.0153910710509644,
-        "r_squared": 0.7467306300137058
+        "score": 1.6665142676303064,
+        "annualized_return": 2.187599895033719,
+        "r_squared": 0.7618003051717184
       },
       {
         "code": "sh510300",
         "name": "沪深300ETF",
-        "score": 0.15710470155850748,
-        "annualized_return": 0.3841673047053613,
-        "r_squared": 0.40894865240809486
+        "score": 0.13343991970462962,
+        "annualized_return": 0.3537072987770238,
+        "r_squared": 0.3772608599427003
       },
       {
         "code": "sh518880",
         "name": "黄金ETF",
-        "score": -0.36839508347154887,
-        "annualized_return": -0.4773333979185619,
-        "r_squared": 0.7717773050826855
+        "score": -0.3858660768333939,
+        "annualized_return": -0.5057985082774614,
+        "r_squared": 0.7628849641085196
       }
     ]
   }
