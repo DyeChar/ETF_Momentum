@@ -266,11 +266,20 @@ def check_stop_loss_signal() -> dict:
 
 def format_stop_loss_section(result: dict) -> str:
     """格式化动量止损监控段落，追加到 output 末尾"""
-    lines = ["", "────────────────────────────", "🛡️ 中证2000ETF"]
+    lines = ["", "────────────────────────────", "🛡️ 中证2000ETF信号"]
 
-    # 合并所有指数并按得分降序排列
-    all_items = []
     target = result['target']
+
+    # ---- 建议持仓（止损→空仓，正常→563300） ----
+    lines.append("")
+    lines.append("【建议持仓】")
+    if result['trigger']:
+        lines.append("  → 空仓")
+    else:
+        lines.append("  → 563300 中证2000ETF")
+
+    # ---- 指数动量排名 ----
+    all_items = []
     if target['score'] is not None:
         all_items.append((target['code'], target['name'], target['score']))
     for code, info in result['benchmarks'].items():
@@ -287,13 +296,12 @@ def format_stop_loss_section(result: dict) -> str:
             prefix = medals[i] if i < 3 else "  "
             lines.append(f"  {prefix} {name}: {score:+.4f}")
 
-    # 399101风控详情
+    # ---- 399101风控详情 ----
     lines.append("")
     lines.append("【399101中小综指风控】")
 
     rank_text = "✅ 是" if result['is_rank1'] else "❌ 否"
 
-    # 连续回升详情
     lift_detail = ""
     t, y, d = result['today_mom'], result['yesterday_mom'], result['day_before_mom']
     if all(v is not None for v in [t, y, d]):
@@ -311,15 +319,9 @@ def format_stop_loss_section(result: dict) -> str:
     if result['trigger']:
         lines.append("")
         lines.append("  🔴 动量止损信号触发！")
-        lines.append("")
-        lines.append("  【当前持仓】")
-        lines.append("  → 空仓")
     else:
         lines.append("")
         lines.append("  🟢 动量正常")
-        lines.append("")
-        lines.append("  【当前持仓】")
-        lines.append("  → 563300 中证2000ETF")
 
     lines.append("")
     lines.append("────────────────────────────")
