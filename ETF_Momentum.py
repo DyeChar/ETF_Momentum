@@ -309,9 +309,13 @@ def format_stop_loss_section(result: dict) -> str:
     lines.append("  ─────────────")
 
     if result['trigger']:
+        lines.append("")
         lines.append("  🔴 动量止损信号触发！")
+        lines.append("")
     else:
+        lines.append("")
         lines.append("  🟢 动量正常")
+        lines.append("")
 
     lines.append("────────────────────────────")
 
