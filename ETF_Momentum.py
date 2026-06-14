@@ -266,7 +266,7 @@ def check_stop_loss_signal() -> dict:
 
 def format_stop_loss_section(result: dict) -> str:
     """格式化动量止损监控段落，追加到 output 末尾"""
-    lines = ["", "────────────────────────────", "🛡️ 小市值动量止损监控"]
+    lines = ["", "────────────────────────────", "🛡️ 中证2000ETF"]
 
     # 合并所有指数并按得分降序排列
     all_items = []
@@ -312,11 +312,16 @@ def format_stop_loss_section(result: dict) -> str:
         lines.append("")
         lines.append("  🔴 动量止损信号触发！")
         lines.append("")
+        lines.append("  【当前持仓】")
+        lines.append("  → 空仓")
     else:
         lines.append("")
         lines.append("  🟢 动量正常")
         lines.append("")
+        lines.append("  【当前持仓】")
+        lines.append("  → 563300 中证2000ETF")
 
+    lines.append("")
     lines.append("────────────────────────────")
 
     return "\n".join(lines)
