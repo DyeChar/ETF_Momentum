@@ -24,6 +24,16 @@ ETF_POOL = {
 LOOKBACK_DAYS = 25  # 回看窗口
 HISTORY_FILE = 'history.json'  # 历史记录文件
 
+# 动量止损监控配置
+STOP_LOSS_TARGET = 'sz399101'    # 中小综指（止损监控对象）
+STOP_LOSS_TARGET_NAME = '中小综指'
+STOP_LOSS_BENCHMARKS = {
+    'sz159919': '沪深300ETF',
+    'sh000015': '红利指数',
+    'sh510050': '上证50ETF',
+}
+MOMENTUM_THRESHOLD = 2.0         # 动量高位阈值（>2视为高位，不触发止损）
+
 
 def get_sina_kline(code: str, days: int = 30) -> list:
     """
@@ -149,6 +159,165 @@ def format_output(ranking: list, changes: dict) -> str:
     return "\n".join(lines)
 
 
+def check_consecutive_lifting(prices: list) -> tuple:
+    """
+    检查399101中小综指是否连续3天动量回升
+    需要 LOOKBACK_DAYS+3 天的数据才能计算今天、昨天、前天的动量
+
+    返回: (is_lifting, today_mom, yesterday_mom, day_before_mom)
+    """
+    if len(prices) < LOOKBACK_DAYS + 3:
+        return False, None, None, None
+
+    today_mom, _, _ = calculate_score(prices[-LOOKBACK_DAYS:])
+    yesterday_mom, _, _ = calculate_score(prices[-(LOOKBACK_DAYS + 1):-1])
+    day_before_mom, _, _ = calculate_score(prices[-(LOOKBACK_DAYS + 2):-2])
+
+    if today_mom is None or yesterday_mom is None or day_before_mom is None:
+        return False, today_mom, yesterday_mom, day_before_mom
+
+    is_lifting = today_mom > yesterday_mom > day_before_mom
+    return is_lifting, today_mom, yesterday_mom, day_before_mom
+
+
+def check_stop_loss_signal() -> dict:
+    """
+    动量止损监控
+    对399101中小综指 + 3个基准指数进行动量计算与风控判断
+
+    触发条件（全部满足时发出止损信号）：
+    1. 399101动量在4个指数中不排第一
+    2. 未出现连续3天动量回升
+    3. 399101动量 < MOMENTUM_THRESHOLD（未处于高位）
+
+    返回: 包含各指数动量、排名、连续回升状态、止损信号的dict
+    """
+    # 1. 获取399101数据（需要额外天数用于连续回升判断）
+    target_prices = get_sina_kline(STOP_LOSS_TARGET, LOOKBACK_DAYS + 5)
+
+    # 2. 获取各基准指数数据
+    benchmark_results = {}
+    for code, name in STOP_LOSS_BENCHMARKS.items():
+        prices = get_sina_kline(code, LOOKBACK_DAYS + 5)
+        if prices and len(prices) >= LOOKBACK_DAYS:
+            score, ann_ret, r2 = calculate_score(prices[-LOOKBACK_DAYS:])
+            benchmark_results[code] = {
+                'name': name,
+                'score': score,
+                'annualized_return': ann_ret,
+                'r_squared': r2,
+            }
+        else:
+            benchmark_results[code] = {
+                'name': name,
+                'score': None,
+                'annualized_return': None,
+                'r_squared': None,
+            }
+
+    # 3. 计算399101动量
+    target_score = None
+    target_ann = None
+    target_r2 = None
+    is_lifting = False
+    today_mom = yesterday_mom = day_before_mom = None
+
+    if target_prices and len(target_prices) >= LOOKBACK_DAYS:
+        target_score, target_ann, target_r2 = calculate_score(target_prices[-LOOKBACK_DAYS:])
+        is_lifting, today_mom, yesterday_mom, day_before_mom = check_consecutive_lifting(target_prices)
+
+    # 4. 判断399101是否排第一
+    all_scores = []
+    for info in benchmark_results.values():
+        if info['score'] is not None:
+            all_scores.append(info['score'])
+    if target_score is not None:
+        all_scores.append(target_score)
+
+    max_score = max(all_scores) if all_scores else 0
+    is_rank1 = (target_score is not None and target_score >= max_score)
+
+    # 5. 止损信号判断（三条件全部满足才触发）
+    trigger = False
+    if target_score is not None:
+        trigger = (
+            not is_rank1
+            and not is_lifting
+            and target_score < MOMENTUM_THRESHOLD
+        )
+
+    return {
+        'target': {
+            'code': STOP_LOSS_TARGET,
+            'name': STOP_LOSS_TARGET_NAME,
+            'score': target_score,
+            'annualized_return': target_ann,
+            'r_squared': target_r2,
+        },
+        'benchmarks': benchmark_results,
+        'is_rank1': is_rank1,
+        'is_lifting': is_lifting,
+        'today_mom': today_mom,
+        'yesterday_mom': yesterday_mom,
+        'day_before_mom': day_before_mom,
+        'trigger': trigger,
+    }
+
+
+def format_stop_loss_section(result: dict) -> str:
+    """格式化动量止损监控段落，追加到 output 末尾"""
+    lines = ["", "────────────────────────────", "🛡️ 小市值动量止损监控"]
+
+    # 合并所有指数并按得分降序排列
+    all_items = []
+    target = result['target']
+    if target['score'] is not None:
+        all_items.append((target['code'], target['name'], target['score']))
+    for code, info in result['benchmarks'].items():
+        if info['score'] is not None:
+            all_items.append((code, info['name'], info['score']))
+
+    all_items.sort(key=lambda x: x[2], reverse=True)
+
+    if all_items:
+        lines.append("")
+        lines.append("【指数动量排名】")
+        medals = ["🥇", "🥈", "🥉"]
+        for i, (code, name, score) in enumerate(all_items):
+            prefix = medals[i] if i < 3 else "  "
+            lines.append(f"  {prefix} {name}: {score:+.4f}")
+
+    # 399101风控详情
+    lines.append("")
+    lines.append("【399101中小综指风控】")
+
+    rank_text = "✅ 是" if result['is_rank1'] else "❌ 否"
+
+    # 连续回升详情
+    lift_detail = ""
+    t, y, d = result['today_mom'], result['yesterday_mom'], result['day_before_mom']
+    if all(v is not None for v in [t, y, d]):
+        lift_detail = f" (今{t:+.4f} vs 昨{y:+.4f} vs 前{d:+.4f})"
+    lift_text = "✅ 是" if result['is_lifting'] else "❌ 否"
+
+    threshold_ok = (target['score'] is not None and target['score'] >= MOMENTUM_THRESHOLD)
+    threshold_text = "✅ 是" if threshold_ok else "❌ 否"
+
+    lines.append(f"  排名第一: {rank_text}")
+    lines.append(f"  连续3日回升: {lift_text}{lift_detail}")
+    lines.append(f"  动量>{MOMENTUM_THRESHOLD}: {threshold_text}")
+    lines.append("  ─────────────")
+
+    if result['trigger']:
+        lines.append("  🔴 动量止损信号触发！")
+    else:
+        lines.append("  🟢 动量正常")
+
+    lines.append("────────────────────────────")
+
+    return "\n".join(lines)
+
+
 def main():
     """主函数"""
     print("开始计算ETF动量得分...")
@@ -190,8 +359,24 @@ def main():
     output = format_output(results, changes)
     print("\n" + output)
 
+    # ---- 动量止损监控（399101 + 3个基准指数） ----
+    stop_loss_result = check_stop_loss_signal()
+    stop_loss_section = format_stop_loss_section(stop_loss_result)
+    print("\n" + stop_loss_section)
+    output += "\n" + stop_loss_section
+
     today = datetime.now().strftime('%Y-%m-%d')
     history['last_result'] = {'date': today, 'ranking': results}
+    history['stop_loss_history'] = {
+        'date': today,
+        'target_score': float(stop_loss_result['target']['score']) if stop_loss_result['target']['score'] is not None else None,
+        'benchmark_scores': {
+            code: float(info['score']) if info['score'] is not None else None
+            for code, info in stop_loss_result['benchmarks'].items()
+        },
+        'is_lifting': bool(stop_loss_result['is_lifting']),
+        'trigger': bool(stop_loss_result['trigger']),
+    }
     save_history(history)
 
     with open('output.txt', 'w', encoding='utf-8') as f:
