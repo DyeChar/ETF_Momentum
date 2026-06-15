@@ -132,29 +132,30 @@ def compare_with_last(current_ranking: list, history: dict) -> dict:
 
 def format_output(ranking: list, changes: dict) -> str:
     today = datetime.now().strftime('%Y-%m-%d')
-
-    lines = [
-        f"📊 ETF动量轮动信号 ({today})",
-        "",
-        "【当前排序】",
-    ]
-
-    for i, r in enumerate(ranking):
-        symbol = "🥇" if i == 0 else ("🥈" if i == 1 else ("🥉" if i == 2 else "  "))
-        lines.append(f"{symbol} {r['name']}: 得分 {r['score']:.4f}")
-
-    if changes['is_new']:
-        lines.extend(["", "【变动提示】", "首次运行，无历史对比"])
-    elif changes['top_changed'] or changes['ranking_changed']:
-        lines.extend(["", "【变动提示】⚠️ 有变动！"])
-        for detail in changes['changes_detail']:
-            lines.append(f"  • {detail}")
-    else:
-        lines.extend(["", "【变动提示】", "✅ 与上次一致，无变动"])
-
     top_etf = ranking[0]
     pure_code = top_etf['code'][2:]  # 去掉sh/sz前缀
-    lines.extend(["", "【建议持仓】", f"👉 {top_etf['name']} ({pure_code})"])
+
+    # 变动状态
+    if changes['is_new']:
+        change_text = "首次运行，无历史对比"
+    elif changes['top_changed'] or changes['ranking_changed']:
+        detail_str = "；".join(changes['changes_detail'])
+        change_text = f"⚠️ 有变动！{detail_str}"
+    else:
+        change_text = "✅ 与上次一致，无变动"
+
+    # 第1行：标题
+    lines = [f"📊 大类资产ETF动量轮动信号（{today}）"]
+
+    # 第2行：建议持仓 + 变动状态
+    lines.append(f"【建议持仓】 👉 {top_etf['name']} ({pure_code})，{change_text}")
+
+    # 第3行：当前排序（单行紧凑）
+    ranking_parts = []
+    for i, r in enumerate(ranking):
+        symbol = "🥇" if i == 0 else ("🥈" if i == 1 else ("🥉" if i == 2 else ""))
+        ranking_parts.append(f"{symbol} {r['name']}: {r['score']:.4f}")
+    lines.append(f"【当前排序】 {' '.join(ranking_parts)}")
 
     return "\n".join(lines)
 
@@ -266,40 +267,35 @@ def check_stop_loss_signal() -> dict:
 
 def format_stop_loss_section(result: dict) -> str:
     """格式化动量止损监控段落，追加到 output 末尾"""
-    lines = ["", "────────────────────────────", "🛡️ 中证2000ETF信号"]
-
+    today = datetime.now().strftime('%Y-%m-%d')
     target = result['target']
 
-    # ---- 建议持仓（止损→空仓，正常→563300） ----
-    lines.append("")
-    lines.append("【建议持仓】")
-    if result['trigger']:
-        lines.append("  → 空仓")
-    else:
-        lines.append("  → 563300 中证2000ETF")
+    # 第1行：标题
+    lines = [f"🛡️ 微盘中证2000信号（{today}）"]
 
-    # ---- 指数动量排名 ----
+    # 第2行：建议持仓 + 触发信号
+    if result['trigger']:
+        lines.append(f"【建议持仓】 → 空仓，🔴 动量止损信号触发！")
+    else:
+        lines.append(f"【建议持仓】 → 563300 中证2000ETF，🟢 动量正常")
+
+    # 第3行：指数动量排名（单行紧凑）
     all_items = []
     if target['score'] is not None:
         all_items.append((target['code'], target['name'], target['score']))
     for code, info in result['benchmarks'].items():
         if info['score'] is not None:
             all_items.append((code, info['name'], info['score']))
-
     all_items.sort(key=lambda x: x[2], reverse=True)
 
-    if all_items:
-        lines.append("")
-        lines.append("【指数动量排名】")
-        medals = ["🥇", "🥈", "🥉"]
-        for i, (code, name, score) in enumerate(all_items):
-            prefix = medals[i] if i < 3 else "  "
-            lines.append(f"  {prefix} {name}: {score:+.4f}")
+    ranking_parts = []
+    medals = ["🥇", "🥈", "🥉"]
+    for i, (code, name, score) in enumerate(all_items):
+        prefix = medals[i] if i < 3 else ""
+        ranking_parts.append(f"{prefix} {name}: {score:+.4f}")
+    lines.append(f"【指数动量排名】 {' '.join(ranking_parts)}")
 
-    # ---- 399101风控详情 ----
-    lines.append("")
-    lines.append("【399101中小综指风控】")
-
+    # 第4行：风控详情（单行紧凑）
     rank_text = "✅ 是" if result['is_rank1'] else "❌ 否"
 
     lift_detail = ""
@@ -311,20 +307,7 @@ def format_stop_loss_section(result: dict) -> str:
     threshold_ok = (target['score'] is not None and target['score'] >= MOMENTUM_THRESHOLD)
     threshold_text = "✅ 是" if threshold_ok else "❌ 否"
 
-    lines.append(f"  排名第一: {rank_text}")
-    lines.append(f"  连续3日回升: {lift_text}{lift_detail}")
-    lines.append(f"  动量>{MOMENTUM_THRESHOLD}: {threshold_text}")
-    lines.append("  ─────────────")
-
-    if result['trigger']:
-        lines.append("")
-        lines.append("  🔴 动量止损信号触发！")
-    else:
-        lines.append("")
-        lines.append("  🟢 动量正常")
-
-    lines.append("")
-    lines.append("────────────────────────────")
+    lines.append(f"【399101中小综指风控】 排名第一: {rank_text} 连续3日回升: {lift_text}{lift_detail} 动量>{MOMENTUM_THRESHOLD}: {threshold_text} ─────────────")
 
     return "\n".join(lines)
 
