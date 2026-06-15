@@ -32,6 +32,7 @@ STOP_LOSS_BENCHMARKS = {
     'sh000015': '红利指数',
     'sh510050': '上证50ETF',
 }
+STOP_LOSS_LOOKBACK_DAYS = 20  # 微盘动量回看窗口（区别于大类资产的25日）
 MOMENTUM_THRESHOLD = 2.0         # 动量高位阈值（>2视为高位，不触发止损）
 
 
@@ -64,10 +65,12 @@ def get_sina_kline(code: str, days: int = 30) -> list:
         return None
 
 
-def calculate_score(prices: list) -> tuple:
+def calculate_score(prices: list, window: int = None) -> tuple:
     """计算动量得分"""
-    prices = prices[-LOOKBACK_DAYS:]
-    if len(prices) < LOOKBACK_DAYS:
+    if window is None:
+        window = LOOKBACK_DAYS
+    prices = prices[-window:]
+    if len(prices) < window:
         return None, None, None
 
     y = np.log(prices)
@@ -160,19 +163,21 @@ def format_output(ranking: list, changes: dict) -> str:
     return "\n\n".join(lines)
 
 
-def check_consecutive_lifting(prices: list) -> tuple:
+def check_consecutive_lifting(prices: list, window: int = None) -> tuple:
     """
     检查399101中小综指是否连续3天动量回升
-    需要 LOOKBACK_DAYS+3 天的数据才能计算今天、昨天、前天的动量
+    需要 window+3 天的数据才能计算今天、昨天、前天的动量
 
     返回: (is_lifting, today_mom, yesterday_mom, day_before_mom)
     """
-    if len(prices) < LOOKBACK_DAYS + 3:
+    if window is None:
+        window = STOP_LOSS_LOOKBACK_DAYS
+    if len(prices) < window + 3:
         return False, None, None, None
 
-    today_mom, _, _ = calculate_score(prices[-LOOKBACK_DAYS:])
-    yesterday_mom, _, _ = calculate_score(prices[-(LOOKBACK_DAYS + 1):-1])
-    day_before_mom, _, _ = calculate_score(prices[-(LOOKBACK_DAYS + 2):-2])
+    today_mom, _, _ = calculate_score(prices[-window:], window)
+    yesterday_mom, _, _ = calculate_score(prices[-(window + 1):-1], window)
+    day_before_mom, _, _ = calculate_score(prices[-(window + 2):-2], window)
 
     if today_mom is None or yesterday_mom is None or day_before_mom is None:
         return False, today_mom, yesterday_mom, day_before_mom
@@ -183,7 +188,7 @@ def check_consecutive_lifting(prices: list) -> tuple:
 
 def check_stop_loss_signal() -> dict:
     """
-    动量止损监控
+    动量止损监控（使用 STOP_LOSS_LOOKBACK_DAYS=20 日窗口）
     对399101中小综指 + 3个基准指数进行动量计算与风控判断
 
     触发条件（全部满足时发出止损信号）：
@@ -193,15 +198,17 @@ def check_stop_loss_signal() -> dict:
 
     返回: 包含各指数动量、排名、连续回升状态、止损信号的dict
     """
+    W = STOP_LOSS_LOOKBACK_DAYS
+
     # 1. 获取399101数据（需要额外天数用于连续回升判断）
-    target_prices = get_sina_kline(STOP_LOSS_TARGET, LOOKBACK_DAYS + 5)
+    target_prices = get_sina_kline(STOP_LOSS_TARGET, W + 5)
 
     # 2. 获取各基准指数数据
     benchmark_results = {}
     for code, name in STOP_LOSS_BENCHMARKS.items():
-        prices = get_sina_kline(code, LOOKBACK_DAYS + 5)
-        if prices and len(prices) >= LOOKBACK_DAYS:
-            score, ann_ret, r2 = calculate_score(prices[-LOOKBACK_DAYS:])
+        prices = get_sina_kline(code, W + 5)
+        if prices and len(prices) >= W:
+            score, ann_ret, r2 = calculate_score(prices[-W:], W)
             benchmark_results[code] = {
                 'name': name,
                 'score': score,
@@ -223,9 +230,9 @@ def check_stop_loss_signal() -> dict:
     is_lifting = False
     today_mom = yesterday_mom = day_before_mom = None
 
-    if target_prices and len(target_prices) >= LOOKBACK_DAYS:
-        target_score, target_ann, target_r2 = calculate_score(target_prices[-LOOKBACK_DAYS:])
-        is_lifting, today_mom, yesterday_mom, day_before_mom = check_consecutive_lifting(target_prices)
+    if target_prices and len(target_prices) >= W:
+        target_score, target_ann, target_r2 = calculate_score(target_prices[-W:], W)
+        is_lifting, today_mom, yesterday_mom, day_before_mom = check_consecutive_lifting(target_prices, W)
 
     # 4. 判断399101是否排第一
     all_scores = []
