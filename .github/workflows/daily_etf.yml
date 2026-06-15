@@ -44,6 +44,6 @@ jobs:
         run: |
           if [ -n "$SERVERCHAN_KEY" ]; then
             curl -s "https://sctapi.ftqq.com/${SERVERCHAN_KEY}.send" \
-              -d "title=大类资产ETF&微盘信号（$(TZ=Asia/Shanghai date +%Y-%m-%d)）" \
+              -d "title=大类资产ETF%26微盘信号（$(TZ=Asia/Shanghai date +%Y-%m-%d)）" \
               -d "desp=$(cat output.txt)"
           fi
