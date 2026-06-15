@@ -32,8 +32,10 @@ STOP_LOSS_BENCHMARKS = {
     'sh000015': '红利指数',
     'sh510050': '上证50ETF',
 }
-STOP_LOSS_LOOKBACK_DAYS = 20  # 微盘动量回看窗口（区别于大类资产的25日）
-MOMENTUM_THRESHOLD = 2.0         # 动量高位阈值（>2视为高位，不触发止损）
+STOP_LOSS_LOOKBACK_DAYS = 20  # 慢动量回看窗口（微盘）
+FAST_LOOKBACK_DAYS = 10        # 快动量回看窗口（微盘）
+FAST_MOMENTUM_THRESHOLD = 0.4  # 快动量阈值（<0.4满足清仓条件）
+MOMENTUM_THRESHOLD = 2.0       # 慢动量高位阈值（>2视为高位，不触发止损）
 
 
 def get_sina_kline(code: str, days: int = 30) -> list:
@@ -163,52 +165,32 @@ def format_output(ranking: list, changes: dict) -> str:
     return "\n\n".join(lines)
 
 
-def check_consecutive_lifting(prices: list, window: int = None) -> tuple:
-    """
-    检查399101中小综指是否连续3天动量回升
-    需要 window+3 天的数据才能计算今天、昨天、前天的动量
-
-    返回: (is_lifting, today_mom, yesterday_mom, day_before_mom)
-    """
-    if window is None:
-        window = STOP_LOSS_LOOKBACK_DAYS
-    if len(prices) < window + 3:
-        return False, None, None, None
-
-    today_mom, _, _ = calculate_score(prices[-window:], window)
-    yesterday_mom, _, _ = calculate_score(prices[-(window + 1):-1], window)
-    day_before_mom, _, _ = calculate_score(prices[-(window + 2):-2], window)
-
-    if today_mom is None or yesterday_mom is None or day_before_mom is None:
-        return False, today_mom, yesterday_mom, day_before_mom
-
-    is_lifting = today_mom > yesterday_mom > day_before_mom
-    return is_lifting, today_mom, yesterday_mom, day_before_mom
-
-
 def check_stop_loss_signal() -> dict:
     """
-    动量止损监控（使用 STOP_LOSS_LOOKBACK_DAYS=20 日窗口）
-    对399101中小综指 + 3个基准指数进行动量计算与风控判断
+    微盘中证2000动量止损监控
+    对399101中小综指 + 3个基准指数进行慢动量(20日)和快动量(10日)计算
 
     触发条件（全部满足时发出止损信号）：
-    1. 399101动量在4个指数中不排第一
-    2. 未出现连续3天动量回升
-    3. 399101动量 < MOMENTUM_THRESHOLD（未处于高位）
+    1. 399101慢动量在4个指数中不排第一
+    2. 399101快动量(10日) < FAST_MOMENTUM_THRESHOLD(0.4)
+    3. 399101慢动量(20日) < MOMENTUM_THRESHOLD(2.0)（未处于高位）
 
-    返回: 包含各指数动量、排名、连续回升状态、止损信号的dict
+    返回: 包含各指数动量、排名、快慢动量、止损信号的dict
     """
-    W = STOP_LOSS_LOOKBACK_DAYS
+    W_SLOW = STOP_LOSS_LOOKBACK_DAYS
+    W_FAST = FAST_LOOKBACK_DAYS
+    # 数据天数取快/慢窗口最大值 + 缓冲
+    fetch_days = max(W_SLOW, W_FAST) + 5
 
-    # 1. 获取399101数据（需要额外天数用于连续回升判断）
-    target_prices = get_sina_kline(STOP_LOSS_TARGET, W + 5)
+    # 1. 获取399101数据
+    target_prices = get_sina_kline(STOP_LOSS_TARGET, fetch_days)
 
-    # 2. 获取各基准指数数据
+    # 2. 获取各基准指数数据（只用慢动量排名）
     benchmark_results = {}
     for code, name in STOP_LOSS_BENCHMARKS.items():
-        prices = get_sina_kline(code, W + 5)
-        if prices and len(prices) >= W:
-            score, ann_ret, r2 = calculate_score(prices[-W:], W)
+        prices = get_sina_kline(code, fetch_days)
+        if prices and len(prices) >= W_SLOW:
+            score, ann_ret, r2 = calculate_score(prices[-W_SLOW:], W_SLOW)
             benchmark_results[code] = {
                 'name': name,
                 'score': score,
@@ -223,51 +205,52 @@ def check_stop_loss_signal() -> dict:
                 'r_squared': None,
             }
 
-    # 3. 计算399101动量
-    target_score = None
-    target_ann = None
-    target_r2 = None
-    is_lifting = False
-    today_mom = yesterday_mom = day_before_mom = None
+    # 3. 计算399101慢动量(20日)和快动量(10日)
+    target_slow_score = None
+    target_slow_ann = None
+    target_slow_r2 = None
+    target_fast_score = None
 
-    if target_prices and len(target_prices) >= W:
-        target_score, target_ann, target_r2 = calculate_score(target_prices[-W:], W)
-        is_lifting, today_mom, yesterday_mom, day_before_mom = check_consecutive_lifting(target_prices, W)
+    if target_prices and len(target_prices) >= W_SLOW:
+        target_slow_score, target_slow_ann, target_slow_r2 = calculate_score(
+            target_prices[-W_SLOW:], W_SLOW
+        )
+    if target_prices and len(target_prices) >= W_FAST:
+        target_fast_score, _, _ = calculate_score(
+            target_prices[-W_FAST:], W_FAST
+        )
 
-    # 4. 判断399101是否排第一
+    # 4. 判断399101慢动量是否排第一
     all_scores = []
     for info in benchmark_results.values():
         if info['score'] is not None:
             all_scores.append(info['score'])
-    if target_score is not None:
-        all_scores.append(target_score)
+    if target_slow_score is not None:
+        all_scores.append(target_slow_score)
 
     max_score = max(all_scores) if all_scores else 0
-    is_rank1 = (target_score is not None and target_score >= max_score)
+    is_rank1 = (target_slow_score is not None and target_slow_score >= max_score)
 
-    # 5. 止损信号判断（三条件全部满足才触发）
+    # 5. 止损信号判断：慢动量非第一 & 快动量<0.4 & 慢动量<2.0
     trigger = False
-    if target_score is not None:
+    if target_slow_score is not None and target_fast_score is not None:
         trigger = (
             not is_rank1
-            and not is_lifting
-            and target_score < MOMENTUM_THRESHOLD
+            and target_fast_score < FAST_MOMENTUM_THRESHOLD
+            and target_slow_score < MOMENTUM_THRESHOLD
         )
 
     return {
         'target': {
             'code': STOP_LOSS_TARGET,
             'name': STOP_LOSS_TARGET_NAME,
-            'score': target_score,
-            'annualized_return': target_ann,
-            'r_squared': target_r2,
+            'slow_score': target_slow_score,
+            'fast_score': target_fast_score,
+            'slow_annualized_return': target_slow_ann,
+            'slow_r_squared': target_slow_r2,
         },
         'benchmarks': benchmark_results,
         'is_rank1': is_rank1,
-        'is_lifting': is_lifting,
-        'today_mom': today_mom,
-        'yesterday_mom': yesterday_mom,
-        'day_before_mom': day_before_mom,
         'trigger': trigger,
     }
 
@@ -286,10 +269,10 @@ def format_stop_loss_section(result: dict) -> str:
     else:
         lines.append(f"**【建议持仓】 → 563300 中证2000ETF，🟢 动量正常**")
 
-    # 第3行：指数动量排名（单行紧凑）
+    # 第3行：指数动量排名（单行紧凑，用慢动量排名）
     all_items = []
-    if target['score'] is not None:
-        all_items.append((target['code'], target['name'], target['score']))
+    if target['slow_score'] is not None:
+        all_items.append((target['code'], target['name'], target['slow_score']))
     for code, info in result['benchmarks'].items():
         if info['score'] is not None:
             all_items.append((code, info['name'], info['score']))
@@ -305,16 +288,24 @@ def format_stop_loss_section(result: dict) -> str:
     # 第4行：风控详情（单行紧凑）
     rank_text = "✅ 是" if result['is_rank1'] else "❌ 否"
 
-    lift_detail = ""
-    t, y, d = result['today_mom'], result['yesterday_mom'], result['day_before_mom']
-    if all(v is not None for v in [t, y, d]):
-        lift_detail = f" (今{t:+.4f} vs 昨{y:+.4f} vs 前{d:+.4f})"
-    lift_text = "✅ 是" if result['is_lifting'] else "❌ 否"
+    fast_score = target['fast_score']
+    slow_score = target['slow_score']
 
-    threshold_ok = (target['score'] is not None and target['score'] >= MOMENTUM_THRESHOLD)
-    threshold_text = "✅ 是" if threshold_ok else "❌ 否"
+    fast_ok = (fast_score is not None and fast_score >= FAST_MOMENTUM_THRESHOLD)
+    fast_text = "✅ 是" if fast_ok else "❌ 否"
+    fast_detail = f" (快={fast_score:+.4f})" if fast_score is not None else ""
 
-    lines.append(f"【399101中小综指风控】 排名第一: {rank_text} 连续3日回升: {lift_text}{lift_detail} 动量>{MOMENTUM_THRESHOLD}: {threshold_text} ─────────────")
+    slow_ok = (slow_score is not None and slow_score >= MOMENTUM_THRESHOLD)
+    slow_text = "✅ 是" if slow_ok else "❌ 否"
+    slow_detail = f" (慢={slow_score:+.4f})" if slow_score is not None else ""
+
+    lines.append(
+        f"【399101中小综指风控】"
+        f" 排名第一: {rank_text}"
+        f" 快动量<{FAST_MOMENTUM_THRESHOLD}: {fast_text}{fast_detail}"
+        f" 慢动量>{MOMENTUM_THRESHOLD}: {slow_text}{slow_detail}"
+        f" ─────────────"
+    )
 
     return "\n\n".join(lines)
 
@@ -370,12 +361,12 @@ def main():
     history['last_result'] = {'date': today, 'ranking': results}
     history['stop_loss_history'] = {
         'date': today,
-        'target_score': float(stop_loss_result['target']['score']) if stop_loss_result['target']['score'] is not None else None,
+        'target_slow_score': float(stop_loss_result['target']['slow_score']) if stop_loss_result['target']['slow_score'] is not None else None,
+        'target_fast_score': float(stop_loss_result['target']['fast_score']) if stop_loss_result['target']['fast_score'] is not None else None,
         'benchmark_scores': {
             code: float(info['score']) if info['score'] is not None else None
             for code, info in stop_loss_result['benchmarks'].items()
         },
-        'is_lifting': bool(stop_loss_result['is_lifting']),
         'trigger': bool(stop_loss_result['trigger']),
     }
     save_history(history)
