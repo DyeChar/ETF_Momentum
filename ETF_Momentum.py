@@ -144,11 +144,11 @@ def format_output(ranking: list, changes: dict) -> str:
     else:
         change_text = "✅ 与上次一致，无变动"
 
-    # 第1行：标题
-    lines = [f"📊 大类资产ETF动量轮动信号（{today}）"]
+    # 第1行：标题（加粗，无日期）
+    lines = [f"**📊 大类资产ETF动量轮动信号**"]
 
     # 第2行：建议持仓 + 变动状态
-    lines.append(f"【建议持仓】 👉 {top_etf['name']} ({pure_code})，{change_text}")
+    lines.append(f"**【建议持仓】 👉 {top_etf['name']} ({pure_code})，{change_text}**")
 
     # 第3行：当前排序（单行紧凑）
     ranking_parts = []
@@ -270,14 +270,14 @@ def format_stop_loss_section(result: dict) -> str:
     today = datetime.now().strftime('%Y-%m-%d')
     target = result['target']
 
-    # 第1行：标题
-    lines = [f"🛡️ 微盘中证2000信号（{today}）"]
+    # 第1行：标题（加粗，无日期）
+    lines = [f"**🛡️ 微盘中证2000信号**"]
 
-    # 第2行：建议持仓 + 触发信号
+    # 第2行：建议持仓 + 触发信号（加粗）
     if result['trigger']:
-        lines.append(f"【建议持仓】 → 空仓，🔴 动量止损信号触发！")
+        lines.append(f"**【建议持仓】 → 空仓，🔴 动量止损信号触发！**")
     else:
-        lines.append(f"【建议持仓】 → 563300 中证2000ETF，🟢 动量正常")
+        lines.append(f"**【建议持仓】 → 563300 中证2000ETF，🟢 动量正常**")
 
     # 第3行：指数动量排名（单行紧凑）
     all_items = []
