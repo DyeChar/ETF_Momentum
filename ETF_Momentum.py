@@ -157,7 +157,7 @@ def format_output(ranking: list, changes: dict) -> str:
         ranking_parts.append(f"{symbol} {r['name']}: {r['score']:.4f}")
     lines.append(f"【当前排序】 {' '.join(ranking_parts)}")
 
-    return "\n".join(lines)
+    return "\n\n".join(lines)
 
 
 def check_consecutive_lifting(prices: list) -> tuple:
@@ -309,7 +309,7 @@ def format_stop_loss_section(result: dict) -> str:
 
     lines.append(f"【399101中小综指风控】 排名第一: {rank_text} 连续3日回升: {lift_text}{lift_detail} 动量>{MOMENTUM_THRESHOLD}: {threshold_text} ─────────────")
 
-    return "\n".join(lines)
+    return "\n\n".join(lines)
 
 
 def main():
@@ -357,7 +357,7 @@ def main():
     stop_loss_result = check_stop_loss_signal()
     stop_loss_section = format_stop_loss_section(stop_loss_result)
     print("\n" + stop_loss_section)
-    output += "\n" + stop_loss_section
+    output += "\n\n" + stop_loss_section
 
     today = datetime.now().strftime('%Y-%m-%d')
     history['last_result'] = {'date': today, 'ranking': results}
