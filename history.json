@@ -30,17 +30,19 @@
         "annualized_return": -0.7247486467149475,
         "r_squared": 0.8106901820729844
       }
-    ]
+    ],
+    "recommend_cash": false
   },
   "stop_loss_history": {
     "date": "2026-06-29",
-    "target_slow_score": 0.03249729185920695,
-    "target_fast_score": -0.0016323070913223836,
+    "target": "sh563300",
+    "target_slow_score": 0.34404048543299215,
+    "target_fast_score": -0.023027833086840217,
     "benchmark_scores": {
       "sz159919": 0.10718056503666586,
       "sh000015": -0.7300930203733105,
       "sh510050": 0.27758822022438817
     },
-    "trigger": true
+    "trigger": false
   }
 }
