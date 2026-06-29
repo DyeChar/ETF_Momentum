@@ -367,7 +367,7 @@ def main():
 
     # 现金阈值判断（同步自大类资产轮动 backtest）
     top_score = results[0]['score']
-    recommend_cash = top_score <= CASH_THRESHOLD
+    recommend_cash = bool(top_score <= CASH_THRESHOLD)
 
     history = load_history()
     changes = compare_with_last(results, history)
