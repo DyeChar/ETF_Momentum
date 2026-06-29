@@ -1,41 +1,61 @@
 #!/usr/bin/env python3
 """
-A股ETF动量轮动策略 - 每日信号推送
+A股ETF动量轮动 + 中证2000ETF择时 — 每日信号推送
+==============================================
+策略1: 大类资产ETF动量轮动（4 ETF选最强，全部≤0 → 511880避险）
+策略2: 中证2000ETF择时（慢/快动量三条件出场，出场→511880）
+
 核心逻辑：线性回归斜率 × R²拟合度
-数据源：新浪财经API（海外访问稳定）
+数据源：新浪财经API
+同步自:
+  - 1.中证2000ETF择时/backtest.py（择时出场逻辑）
+  - 2.大类资产ETF轮动策略/backtest.py（轮动选股逻辑）
 """
 
-import requests
-import pandas as pd
-import numpy as np
-import math
 import json
+import math
 import os
 from datetime import datetime
 
-# 策略配置
+import numpy as np
+import pandas as pd
+import requests
+
+# ============================================================
+# 策略1: 大类资产ETF动量轮动
+# 同步自: 2.大类资产ETF轮动策略/config.py + backtest.py
+# ============================================================
 ETF_POOL = {
-    'sh518880': '黄金ETF',      # 上海
-    'sh513100': '纳指ETF',      # 上海
-    'sz159915': '创业板ETF',    # 深圳
-    'sh510300': '沪深300ETF',   # 上海
+    'sh518880': '黄金ETF',      # 华安黄金ETF, 2013-07-29上市
+    'sh513100': '纳指ETF',      # 国泰纳斯达克100ETF, 2013-05-28上市
+    'sh510300': '沪深300ETF',   # 华泰柏瑞沪深300ETF, 2012-05-28上市
+    'sz159915': '创业板ETF',    # 易方达创业板ETF, 2011-09-20上市
 }
+LOOKBACK_DAYS = 25              # 动量窗口（交易日）
+CASH_THRESHOLD = 0.0            # 全部ETF动量 ≤ 此值 → 持有银华日利避险
+CASH_ETF_CODE = 'sh511880'      # 银华日利（货币ETF）
+CASH_ETF_NAME = '银华日利'
 
-LOOKBACK_DAYS = 25  # 回看窗口
-HISTORY_FILE = 'history.json'  # 历史记录文件
-
-# 动量止损监控配置
-STOP_LOSS_TARGET = 'sz399101'    # 中小综指（止损监控对象）
-STOP_LOSS_TARGET_NAME = '中小综指'
+# ============================================================
+# 策略2: 中证2000ETF择时
+# 同步自: 1.中证2000ETF择时/config.py + backtest.py
+# ============================================================
+STOP_LOSS_TARGET = 'sh563300'       # 中证2000ETF（华泰柏瑞，563300）
+STOP_LOSS_TARGET_NAME = '中证2000ETF'
 STOP_LOSS_BENCHMARKS = {
-    'sz159919': '沪深300ETF',
-    'sh000015': '红利指数',
-    'sh510050': '上证50ETF',
+    'sz159919': '沪深300ETF',       # 嘉实沪深300ETF
+    'sh000015': '红利指数',          # 上证红利指数
+    'sh510050': '上证50ETF',        # 华夏上证50ETF
 }
-STOP_LOSS_LOOKBACK_DAYS = 20  # 慢动量回看窗口（微盘）
-FAST_LOOKBACK_DAYS = 10        # 快动量回看窗口（微盘）
-FAST_MOMENTUM_THRESHOLD = 0.4  # 快动量阈值（<0.4满足清仓条件）
-MOMENTUM_THRESHOLD = 2.0       # 慢动量高位阈值（>2视为高位，不触发止损）
+STOP_LOSS_LOOKBACK_DAYS = 20        # 慢动量窗口（交易日）
+FAST_LOOKBACK_DAYS = 10             # 快动量窗口（交易日）
+FAST_MOMENTUM_THRESHOLD = 0.4       # 快动量阈值（<此值满足清仓条件）
+MOMENTUM_THRESHOLD = 2.0            # 慢动量高位阈值（>此值不触发止损）
+
+# ============================================================
+# 通用配置
+# ============================================================
+HISTORY_FILE = 'history.json'       # 历史信号记录
 
 
 def get_sina_kline(code: str, days: int = 30) -> list:
@@ -135,11 +155,8 @@ def compare_with_last(current_ranking: list, history: dict) -> dict:
     return changes
 
 
-def format_output(ranking: list, changes: dict) -> str:
-    today = datetime.now().strftime('%Y-%m-%d')
-    top_etf = ranking[0]
-    pure_code = top_etf['code'][2:]  # 去掉sh/sz前缀
-
+def format_output(ranking: list, changes: dict, recommend_cash: bool = False) -> str:
+    """格式化策略1输出（大类资产ETF轮动）。"""
     # 变动状态
     if changes['is_new']:
         change_text = "首次运行，无历史对比"
@@ -149,13 +166,17 @@ def format_output(ranking: list, changes: dict) -> str:
     else:
         change_text = "✅ 与上次一致，无变动"
 
-    # 第1行：标题（加粗，无日期）
     lines = [f"**📊 大类资产ETF动量轮动信号**"]
 
-    # 第2行：建议持仓 + 变动状态
-    lines.append(f"**【建议持仓】 👉 {top_etf['name']} ({pure_code})，{change_text}**")
+    if recommend_cash:
+        # 全部ETF动量 ≤ 0 → 避险
+        lines.append(f"**【建议持仓】 👉 {CASH_ETF_NAME} ({CASH_ETF_CODE[2:]})，🛡️ 全部ETF动量≤0，避险**")
+    else:
+        top_etf = ranking[0]
+        pure_code = top_etf['code'][2:]  # 去掉sh/sz前缀
+        lines.append(f"**【建议持仓】 👉 {top_etf['name']} ({pure_code})，{change_text}**")
 
-    # 第3行：当前排序（单行紧凑）
+    # 当前排序（单行紧凑）
     ranking_parts = []
     for i, r in enumerate(ranking):
         symbol = "🥇" if i == 0 else ("🥈" if i == 1 else ("🥉" if i == 2 else ""))
@@ -167,25 +188,27 @@ def format_output(ranking: list, changes: dict) -> str:
 
 def check_stop_loss_signal() -> dict:
     """
-    微盘中证2000动量止损监控
-    对399101中小综指 + 3个基准指数进行慢动量(20日)和快动量(10日)计算
+    中证2000ETF择时 — 慢/快动量三条件出场监控。
+    同步自: 1.中证2000ETF择时/backtest.py (line 229-510)
 
-    触发条件（全部满足时发出止损信号）：
-    1. 399101慢动量在4个指数中不排第一
-    2. 399101快动量(10日) < FAST_MOMENTUM_THRESHOLD(0.4)
-    3. 399101慢动量(20日) < MOMENTUM_THRESHOLD(2.0)（未处于高位）
+    对 sh563300(中证2000ETF) + 3个基准指数计算慢动量(20日)和快动量(10日)。
 
-    返回: 包含各指数动量、排名、快慢动量、止损信号的dict
+    出场条件（全部满足 → 卖出563300，买入511880避险）：
+      1. 563300 慢动量(20日) 在4个指数中不排第一
+      2. 563300 快动量(10日) < FAST_MOMENTUM_THRESHOLD(0.4)
+      3. 563300 慢动量(20日) < MOMENTUM_THRESHOLD(2.0)（未处于高位）
+
+    返回: {target, benchmarks, is_rank1, trigger}
     """
     W_SLOW = STOP_LOSS_LOOKBACK_DAYS
     W_FAST = FAST_LOOKBACK_DAYS
     # 数据天数取快/慢窗口最大值 + 缓冲
     fetch_days = max(W_SLOW, W_FAST) + 5
 
-    # 1. 获取399101数据
+    # 1. 获取中证2000ETF数据
     target_prices = get_sina_kline(STOP_LOSS_TARGET, fetch_days)
 
-    # 2. 获取各基准指数数据（只用慢动量排名）
+    # 2. 获取各基准指数数据（慢动量排名用）
     benchmark_results = {}
     for code, name in STOP_LOSS_BENCHMARKS.items():
         prices = get_sina_kline(code, fetch_days)
@@ -205,7 +228,7 @@ def check_stop_loss_signal() -> dict:
                 'r_squared': None,
             }
 
-    # 3. 计算399101慢动量(20日)和快动量(10日)
+    # 3. 计算目标ETF慢动量(20日)和快动量(10日)
     target_slow_score = None
     target_slow_ann = None
     target_slow_r2 = None
@@ -220,7 +243,7 @@ def check_stop_loss_signal() -> dict:
             target_prices[-W_FAST:], W_FAST
         )
 
-    # 4. 判断399101慢动量是否排第一
+    # 4. 判断目标ETF慢动量是否排第一
     all_scores = []
     for info in benchmark_results.values():
         if info['score'] is not None:
@@ -256,20 +279,19 @@ def check_stop_loss_signal() -> dict:
 
 
 def format_stop_loss_section(result: dict) -> str:
-    """格式化动量止损监控段落，追加到 output 末尾"""
-    today = datetime.now().strftime('%Y-%m-%d')
+    """格式化策略2输出（中证2000ETF择时）。"""
     target = result['target']
 
-    # 第1行：标题（加粗，无日期）
-    lines = [f"**🛡️ 微盘中证2000信号**"]
+    lines = [f"**🛡️ 中证2000ETF择时信号**"]
 
-    # 第2行：建议持仓 + 触发信号（加粗）
+    # 建议持仓
     if result['trigger']:
-        lines.append(f"**【建议持仓】 → 空仓，🔴 动量止损信号触发！**")
+        lines.append(f"**【建议持仓】 👉 空仓（{CASH_ETF_NAME} {CASH_ETF_CODE[2:]}），🔴 动量止损信号触发！**")
     else:
-        lines.append(f"**【建议持仓】 → 563300 中证2000ETF，🟢 动量正常**")
+        target_pure = STOP_LOSS_TARGET[2:]
+        lines.append(f"**【建议持仓】 👉 {target_pure} {STOP_LOSS_TARGET_NAME}，🟢 动量正常**")
 
-    # 第3行：指数动量排名（单行紧凑，用慢动量排名）
+    # 指数动量排名（慢动量）
     all_items = []
     if target['slow_score'] is not None:
         all_items.append((target['code'], target['name'], target['slow_score']))
@@ -283,9 +305,9 @@ def format_stop_loss_section(result: dict) -> str:
     for i, (code, name, score) in enumerate(all_items):
         prefix = medals[i] if i < 3 else ""
         ranking_parts.append(f"{prefix} {name}: {score:+.4f}")
-    lines.append(f"【指数动量排名】 {' '.join(ranking_parts)}")
+    lines.append(f"【动量排名（{STOP_LOSS_LOOKBACK_DAYS}日慢动量）】 {' '.join(ranking_parts)}")
 
-    # 第4行：风控详情（单行紧凑）
+    # 风控详情
     rank_text = "✅ 是" if result['is_rank1'] else "❌ 否"
 
     fast_score = target['fast_score']
@@ -299,68 +321,77 @@ def format_stop_loss_section(result: dict) -> str:
     slow_text = "✅ 是" if slow_ok else "❌ 否"
     slow_detail = f" (慢={slow_score:+.4f})" if slow_score is not None else ""
 
+    pure_target = STOP_LOSS_TARGET[2:]
     lines.append(
-        f"【399101中小综指风控】"
+        f"【{pure_target} {STOP_LOSS_TARGET_NAME} 风控】"
         f" 排名第一: {rank_text}"
         f" 快动量<{FAST_MOMENTUM_THRESHOLD}: {fast_text}{fast_detail}"
         f" 慢动量>{MOMENTUM_THRESHOLD}: {slow_text}{slow_detail}"
-        f" ─────────────"
     )
 
     return "\n\n".join(lines)
 
 
 def main():
-    """主函数"""
-    print("开始计算ETF动量得分...")
+    """主函数：运行两个策略并推送信号。"""
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print(f"开始计算ETF动量得分... [{now_str}]")
 
+    # ═══════════════════════════════════════════════════════
+    # 策略1: 大类资产ETF动量轮动
+    # ═══════════════════════════════════════════════════════
     results = []
-
     for code, name in ETF_POOL.items():
         prices = get_sina_kline(code, LOOKBACK_DAYS + 5)
-
         if prices is None or len(prices) < LOOKBACK_DAYS:
-            print(f"警告: {code} 数据获取失败")
+            print(f"  ⚠️ {code} ({name}) 数据不足")
             continue
-
         score, ann_ret, r2 = calculate_score(prices)
-
         if score is None:
-            print(f"警告: {code} 计算失败")
+            print(f"  ⚠️ {code} ({name}) 计算失败")
             continue
-
         results.append({
-            'code': code,
-            'name': name,
-            'score': score,
-            'annualized_return': ann_ret,
-            'r_squared': r2
+            'code': code, 'name': name, 'score': score,
+            'annualized_return': ann_ret, 'r_squared': r2,
         })
 
     if not results:
-        print("错误: 没有获取到任何ETF数据")
+        error_msg = (f"ETF动量轮动信号 ({datetime.now().strftime('%Y-%m-%d')})\n\n"
+                     f"❌ 数据获取失败，请检查新浪API")
+        print(error_msg)
         with open('output.txt', 'w', encoding='utf-8') as f:
-            f.write(f"ETF动量轮动信号 ({datetime.now().strftime('%Y-%m-%d')})\n\n数据获取失败，请检查API")
+            f.write(error_msg)
         return
 
     results.sort(key=lambda x: x['score'], reverse=True)
 
+    # 现金阈值判断（同步自大类资产轮动 backtest）
+    top_score = results[0]['score']
+    recommend_cash = top_score <= CASH_THRESHOLD
+
     history = load_history()
     changes = compare_with_last(results, history)
-
-    output = format_output(results, changes)
+    output = format_output(results, changes, recommend_cash=recommend_cash)
     print("\n" + output)
 
-    # ---- 动量止损监控（399101 + 3个基准指数） ----
+    # ═══════════════════════════════════════════════════════
+    # 策略2: 中证2000ETF择时（慢/快动量三条件出场）
+    # ═══════════════════════════════════════════════════════
     stop_loss_result = check_stop_loss_signal()
     stop_loss_section = format_stop_loss_section(stop_loss_result)
     print("\n" + stop_loss_section)
     output += "\n\n" + stop_loss_section
 
+    # 保存历史
     today = datetime.now().strftime('%Y-%m-%d')
-    history['last_result'] = {'date': today, 'ranking': results}
+    history['last_result'] = {
+        'date': today,
+        'ranking': results,
+        'recommend_cash': recommend_cash,
+    }
     history['stop_loss_history'] = {
         'date': today,
+        'target': STOP_LOSS_TARGET,
         'target_slow_score': float(stop_loss_result['target']['slow_score']) if stop_loss_result['target']['slow_score'] is not None else None,
         'target_fast_score': float(stop_loss_result['target']['fast_score']) if stop_loss_result['target']['fast_score'] is not None else None,
         'benchmark_scores': {
@@ -374,6 +405,7 @@ def main():
     with open('output.txt', 'w', encoding='utf-8') as f:
         f.write(output)
 
+    print(f"\n✅ 信号已保存至 output.txt [{datetime.now().strftime('%H:%M:%S')}]")
     return output
 
 
