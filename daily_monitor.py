@@ -727,7 +727,7 @@ def format_dividend_section():
         rank = medals.get(i, str(i+1))
         label = f"{r['name']}({r['code']})"
         if r['code'] in HIGHLIGHT_CODES:
-            label = f"**{label}**"
+            label = f"🔴{label}"
         ps = f"{r['price']:.2f}" if not np.isnan(r['price']) else "N/A"
         yd = f"{r['fy_yld']:.2f}%" if not np.isnan(r['fy_yld']) else "N/A"
         fd = r['fy_detail'] if r['fy_detail'] else "-"
