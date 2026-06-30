@@ -290,16 +290,15 @@ def main():
     if target_slow_score is not None and target_fast_score is not None:
         trigger = (not is_rank1 and target_fast_score < FAST_MOMENTUM_THRESHOLD and target_slow_score < MOMENTUM_THRESHOLD)
 
-    target_pure = STOP_LOSS_TARGET[2:]
-    print(f"\n  【{target_pure} {STOP_LOSS_TARGET_NAME} 风控】")
-    print(f"  慢动量排名第一: {'✅ 是' if is_rank1 else '❌ 否'}")
-    print(f"  快动量(10日): {target_fast_score:+.4f}  {'<' if target_fast_score is not None and target_fast_score < FAST_MOMENTUM_THRESHOLD else '≥'} {FAST_MOMENTUM_THRESHOLD}  →  {'✅ 满足清仓条件' if target_fast_score is not None and target_fast_score < FAST_MOMENTUM_THRESHOLD else '❌ 不满足'}")
-    print(f"  慢动量(20日): {target_slow_score:+.4f}  {'<' if target_slow_score is not None and target_slow_score < MOMENTUM_THRESHOLD else '≥'} {MOMENTUM_THRESHOLD}  →  {'✅ 满足清仓条件' if target_slow_score is not None and target_slow_score < MOMENTUM_THRESHOLD else '❌ 不满足'}")
+    print(f"\n  【风控】")
+    print(f"  排名第一: {'✅ 是' if is_rank1 else '❌ 否'}")
+    print(f"  快动量<{FAST_MOMENTUM_THRESHOLD}: {'✅ 是' if target_fast_score is not None and target_fast_score < FAST_MOMENTUM_THRESHOLD else '❌ 否'} (快= {target_fast_score:.4f})" if target_fast_score is not None else f"  快动量<{FAST_MOMENTUM_THRESHOLD}: 数据不足")
+    print(f"  慢动量>{MOMENTUM_THRESHOLD}: {'✅ 是' if target_slow_score is not None and target_slow_score >= MOMENTUM_THRESHOLD else '❌ 否'} (慢= {target_slow_score:.4f})" if target_slow_score is not None else f"  慢动量>{MOMENTUM_THRESHOLD}: 数据不足")
 
     if trigger:
         print(f"\n  🔴 动量止损信号触发！当前建议: 空仓 → {CASH_ETF_NAME} ({CASH_ETF_CODE[2:]})")
     else:
-        print(f"\n  🟢 动量正常，当前建议: 持仓 {target_pure} {STOP_LOSS_TARGET_NAME}")
+        print(f"\n  🟢 动量正常，当前建议: 持仓 {STOP_LOSS_TARGET_NAME}（{STOP_LOSS_TARGET[2:]}）")
 
     print(f"\n{'='*70}\n")
 

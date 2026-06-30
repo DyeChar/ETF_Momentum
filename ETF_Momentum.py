@@ -285,13 +285,13 @@ def format_stop_loss_section(result: dict) -> str:
     lines = [f"**🛡️ 中证2000ETF择时信号**"]
 
     # 建议持仓
+    target_pure = STOP_LOSS_TARGET[2:]
     if result['trigger']:
         lines.append(f"**【建议持仓】 👉 空仓（{CASH_ETF_NAME} {CASH_ETF_CODE[2:]}），🔴 动量止损信号触发！**")
     else:
-        target_pure = STOP_LOSS_TARGET[2:]
-        lines.append(f"**【建议持仓】 👉 {target_pure} {STOP_LOSS_TARGET_NAME}，🟢 动量正常**")
+        lines.append(f"**【建议持仓】 👉 {STOP_LOSS_TARGET_NAME}（{target_pure}），🟢 动量正常**")
 
-    # 指数动量排名（慢动量）
+    # 慢动量排序
     all_items = []
     if target['slow_score'] is not None:
         all_items.append((target['code'], target['name'], target['slow_score']))
@@ -304,8 +304,8 @@ def format_stop_loss_section(result: dict) -> str:
     medals = ["🥇", "🥈", "🥉"]
     for i, (code, name, score) in enumerate(all_items):
         prefix = medals[i] if i < 3 else ""
-        ranking_parts.append(f"{prefix} {name}: {score:+.4f}")
-    lines.append(f"【动量排名（{STOP_LOSS_LOOKBACK_DAYS}日慢动量）】 {' '.join(ranking_parts)}")
+        ranking_parts.append(f"{prefix} {name}: {score:.4f}")
+    lines.append(f"【{STOP_LOSS_LOOKBACK_DAYS}日慢动量排序】 {' '.join(ranking_parts)}")
 
     # 风控详情
     rank_text = "✅ 是" if result['is_rank1'] else "❌ 否"
@@ -315,15 +315,14 @@ def format_stop_loss_section(result: dict) -> str:
 
     fast_ok = (fast_score is not None and fast_score >= FAST_MOMENTUM_THRESHOLD)
     fast_text = "✅ 是" if fast_ok else "❌ 否"
-    fast_detail = f" (快={fast_score:+.4f})" if fast_score is not None else ""
+    fast_detail = f" (快= {fast_score:.4f})" if fast_score is not None else ""
 
     slow_ok = (slow_score is not None and slow_score >= MOMENTUM_THRESHOLD)
     slow_text = "✅ 是" if slow_ok else "❌ 否"
-    slow_detail = f" (慢={slow_score:+.4f})" if slow_score is not None else ""
+    slow_detail = f" (慢= {slow_score:.4f})" if slow_score is not None else ""
 
-    pure_target = STOP_LOSS_TARGET[2:]
     lines.append(
-        f"【{pure_target} {STOP_LOSS_TARGET_NAME} 风控】"
+        f"【风控】"
         f" 排名第一: {rank_text}"
         f" 快动量<{FAST_MOMENTUM_THRESHOLD}: {fast_text}{fast_detail}"
         f" 慢动量>{MOMENTUM_THRESHOLD}: {slow_text}{slow_detail}"
