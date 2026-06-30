@@ -695,7 +695,7 @@ def format_dividend_section():
             "price":prices.get(code,float("nan")),
             "years":m["consecutive_years"],
             "fy":m["fiscal_year"],
-            "fy_yld":m["fy_yield"],"ttm":m["ttm_yield"],
+            "fy_yld":m["fy_yield"],
             "fy_detail":m["fy_detail"],
             "d1":m["div_1y"],"d3":m["div_3y"],"d5":m["div_5y"],
         })
@@ -703,7 +703,7 @@ def format_dividend_section():
     rows.sort(key=lambda r: r["fy_yld"] if not np.isnan(r["fy_yld"]) else -1, reverse=True)
     valid = [r for r in rows if not np.isnan(r["fy_yld"])]
 
-    lines = ["**💰 高股息跟踪 — TTM股息率**", ""]
+    lines = ["**💰 高股息跟踪**", ""]
 
     # 摘要
     if valid:
@@ -711,7 +711,7 @@ def format_dividend_section():
         lines.append("")
 
     # Markdown 表格
-    lines.append("| # | 名称(代码) | 现价 | 股息率 | TTM | 财年分红 | 连续 |")
+    lines.append("| # | 名称(代码) | 现价 | 股息率 | 财年分红 | 连续 |")
     lines.append("|---|-----------|-----|--------|-----|---------|------|")
     medals = {0:"🥇",1:"🥈",2:"🥉"}
     for i,r in enumerate(rows):
@@ -719,10 +719,9 @@ def format_dividend_section():
         label = f"{r['name']}({r['code']})"
         ps = f"{r['price']:.2f}" if not np.isnan(r['price']) else "N/A"
         yd = f"{r['fy_yld']:.2f}%" if not np.isnan(r['fy_yld']) else "N/A"
-        ttm = f"{r['ttm']:.1f}%" if not np.isnan(r['ttm']) else "N/A"
         fd = r['fy_detail'] if r['fy_detail'] else "-"
         yrs = f"{int(r['years'])}年" if r['years']>0 else "-"
-        lines.append(f"| {rank} | {label} | {ps} | {yd} | {ttm} | {fd} | {yrs} |")
+        lines.append(f"| {rank} | {label} | {ps} | {yd} | {fd} | {yrs} |")
 
     nodata = [r for r in rows if np.isnan(r["fy_yld"])]
     if nodata:
