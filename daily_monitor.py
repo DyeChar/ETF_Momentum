@@ -532,7 +532,7 @@ def _fetch_dividend_prices(codes):
 
 
 def format_dividend_section():
-    """策略3：高股息跟踪。返回格式化文本表格。"""
+    """策略3：高股息跟踪。Markdown 格式，与策略1/2风格一致。"""
     as_of = pd.Timestamp(datetime.now())
     codes = [c for c,_ in DIVIDEND_STOCKS]
     names = {c:n for c,n in DIVIDEND_STOCKS}
@@ -549,31 +549,50 @@ def format_dividend_section():
             "code":code,"name":names.get(code,code),
             "price":prices.get(code,float("nan")),
             "years":m["consecutive_years"],
+            "fy":m["fiscal_year"],
             "fy_yld":m["fy_yield"],"ttm":m["ttm_yield"],
             "fy_detail":m["fy_detail"],
             "d1":m["div_1y"],"d3":m["div_3y"],"d5":m["div_5y"],
         })
 
     rows.sort(key=lambda r: r["fy_yld"] if not np.isnan(r["fy_yld"]) else -1, reverse=True)
+    valid = [r for r in rows if not np.isnan(r["fy_yld"])]
 
-    W = 100
-    lines = ["="*W, "  策略3: 高股息跟踪 — TTM股息率", "="*W]
-    hdr = (f"{'名称(代码)':<16s} {'现价':>7s} {'股息率':>7s} {'TTM':>7s} "
-           f"{'财年分红':<22s} {'近1年':>8s} {'近3年':>8s} {'近5年':>8s} {'连续':>5s}")
-    lines.append(hdr); lines.append("-"*W)
-    for r in rows:
-        label = f"{r['name']}({r['code']})"
-        ps = f"{r['price']:7.2f}" if not np.isnan(r['price']) else "    N/A"
-        fy_yd = f"{r['fy_yld']:6.2f}%" if not np.isnan(r['fy_yld']) else "   N/A"
-        ttm_s = f"{r['ttm']:6.2f}%" if not np.isnan(r['ttm']) else "   N/A"
-        fd = r["fy_detail"] if r["fy_detail"] else "-"
-        ys = f"{r['years']:>4d}年" if r['years']>0 else "    -"
-        lines.append(f"{label:<16s} {ps} {fy_yd} {ttm_s} "
-                     f"{fd:<22s} {r['d1']:>8.4f} {r['d3']:>8.4f} {r['d5']:>8.4f} {ys}")
-    valid = [r["fy_yld"] for r in rows if not np.isnan(r["fy_yld"])]
+    lines = ["**💰 高股息跟踪 — TTM股息率**"]
+
+    # 摘要行
     if valid:
-        lines.append("-"*W)
-        lines.append(f"  共 {len(rows)} 只 | 平均: {np.mean(valid):.2f}% | 中位数: {np.median(valid):.2f}%")
+        top3 = "  ".join(f"`{r['name']}`{r['fy_yld']:.1f}%" for r in valid[:3])
+        lines.append(f"均{np.mean([r['fy_yld'] for r in valid]):.2f}%  中位{np.median([r['fy_yld'] for r in valid]):.2f}%  Top3: {top3}")
+        lines.append("")
+
+    # 完整榜单：紧凑单行格式
+    medals = {0:"🥇",1:"🥈",2:"🥉"}
+    for i,r in enumerate(rows):
+        pre = medals.get(i, f"{i+1:2d}.")
+        ps = f"{r['price']:.2f}" if not np.isnan(r['price']) else "N/A"
+        yd = f"{r['fy_yld']:.2f}%" if not np.isnan(r['fy_yld']) else "N/A"
+        fd = r['fy_detail'] if r['fy_detail'] else "-"
+        ttm = f"TTM{r['ttm']:.1f}%" if not np.isnan(r['ttm']) else ""
+        fy_label = f"FY{int(r['fy'])}" if r['fy'] and not np.isnan(r['fy']) else ""
+        yrs = f"连续{int(r['years'])}年" if r['years']>0 else ""
+
+        parts = [
+            f"{pre} {r['name']}({r['code']})",
+            f"现{ps}",
+            f"息{yd}",
+            f"{fy_label}:{fd}",
+        ]
+        if ttm: parts.append(ttm)
+        if yrs: parts.append(yrs)
+        lines.append("  ".join(parts))
+
+    # 无数据
+    nodata = [r for r in rows if np.isnan(r["fy_yld"])]
+    if nodata:
+        lines.append("")
+        lines.append("无分红数据: " + "  ".join(f"{r['name']}({r['code']})" for r in nodata))
+
     return "\n".join(lines)
 
 
