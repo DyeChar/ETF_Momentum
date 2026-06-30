@@ -369,6 +369,10 @@ DIVIDEND_STOCKS = [
 DIV_BATCH_DELAY = 0.3
 DIV_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dividend_cache.parquet")
 
+# 重点关注标的（微信推送中加粗显示）
+HIGHLIGHT_CODES = {"600036", "000333", "600941", "601318", "601668", "601088", "600900"}
+# 招商银行  美的集团  中国移动  中国平安  中国建筑  中国神华  长江电力
+
 # Sina HTML 列名（MultiIndex）
 COL_ANNOUNCE = ("分红", "公告日期", "公告日期")
 COL_DIV10 = ("分红", "分红方案(每10股)", "派息(税前)(元)")
@@ -722,6 +726,8 @@ def format_dividend_section():
     for i,r in enumerate(rows):
         rank = medals.get(i, str(i+1))
         label = f"{r['name']}({r['code']})"
+        if r['code'] in HIGHLIGHT_CODES:
+            label = f"**{label}**"
         ps = f"{r['price']:.2f}" if not np.isnan(r['price']) else "N/A"
         yd = f"{r['fy_yld']:.2f}%" if not np.isnan(r['fy_yld']) else "N/A"
         fd = r['fy_detail'] if r['fy_detail'] else "-"
