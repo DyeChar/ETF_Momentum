@@ -558,36 +558,27 @@ def format_dividend_section():
     rows.sort(key=lambda r: r["fy_yld"] if not np.isnan(r["fy_yld"]) else -1, reverse=True)
     valid = [r for r in rows if not np.isnan(r["fy_yld"])]
 
-    lines = ["**💰 高股息跟踪 — TTM股息率**"]
+    lines = ["**💰 高股息跟踪 — TTM股息率**", ""]
 
-    # 摘要行
+    # 摘要
     if valid:
-        top3 = "  ".join(f"`{r['name']}`{r['fy_yld']:.1f}%" for r in valid[:3])
-        lines.append(f"均{np.mean([r['fy_yld'] for r in valid]):.2f}%  中位{np.median([r['fy_yld'] for r in valid]):.2f}%  Top3: {top3}")
+        lines.append(f"> 均{np.mean([r['fy_yld'] for r in valid]):.2f}%  中位{np.median([r['fy_yld'] for r in valid]):.2f}%  共{len(rows)}只")
         lines.append("")
 
-    # 完整榜单：紧凑单行格式
+    # Markdown 表格
+    lines.append("| # | 名称(代码) | 现价 | 股息率 | TTM | 财年分红 | 连续 |")
+    lines.append("|---|-----------|-----|--------|-----|---------|------|")
     medals = {0:"🥇",1:"🥈",2:"🥉"}
     for i,r in enumerate(rows):
-        pre = medals.get(i, f"{i+1:2d}.")
+        rank = medals.get(i, str(i+1))
+        label = f"{r['name']}({r['code']})"
         ps = f"{r['price']:.2f}" if not np.isnan(r['price']) else "N/A"
         yd = f"{r['fy_yld']:.2f}%" if not np.isnan(r['fy_yld']) else "N/A"
+        ttm = f"{r['ttm']:.1f}%" if not np.isnan(r['ttm']) else "N/A"
         fd = r['fy_detail'] if r['fy_detail'] else "-"
-        ttm = f"TTM{r['ttm']:.1f}%" if not np.isnan(r['ttm']) else ""
-        fy_label = f"FY{int(r['fy'])}" if r['fy'] and not np.isnan(r['fy']) else ""
-        yrs = f"连续{int(r['years'])}年" if r['years']>0 else ""
+        yrs = f"{int(r['years'])}年" if r['years']>0 else "-"
+        lines.append(f"| {rank} | {label} | {ps} | {yd} | {ttm} | {fd} | {yrs} |")
 
-        parts = [
-            f"{pre} {r['name']}({r['code']})",
-            f"现{ps}",
-            f"息{yd}",
-            f"{fy_label}:{fd}",
-        ]
-        if ttm: parts.append(ttm)
-        if yrs: parts.append(yrs)
-        lines.append("  ".join(parts))
-
-    # 无数据
     nodata = [r for r in rows if np.isnan(r["fy_yld"])]
     if nodata:
         lines.append("")
