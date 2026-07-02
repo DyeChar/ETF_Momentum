@@ -312,26 +312,35 @@ def format_stop_loss_section(result: dict) -> str:
         ranking_parts.append(f"{prefix} {name}: {score:.4f}")
     lines.append(f"【{STOP_LOSS_LOOKBACK_DAYS}日慢动量排序】 {' '.join(ranking_parts)}")
 
-    # 风控详情
-    rank_text = "✅ 是" if result['is_rank1'] else "❌ 否"
+    # 风控三条件
+    # 条件①：慢动量不排第一 → 触发
+    cond1 = not result['is_rank1']
+    c1_text = "✅ 触发" if cond1 else "🟢 未触发"
+    c1_detail = f" (排第{[i+1 for i,(c,_,_) in enumerate(all_items) if c==target['code']][0] if not result['is_rank1'] else 1}名)" if all_items else ""
 
+    # 条件②：快动量 < 0.4 → 触发
     fast_score = target['fast_score']
+    cond2 = (fast_score is not None and fast_score < FAST_MOMENTUM_THRESHOLD)
+    c2_text = "✅ 触发" if cond2 else "🟢 未触发"
+    c2_detail = f" (快={fast_score:.4f})" if fast_score is not None else ""
+
+    # 条件③：慢动量 < 2.0 → 触发
     slow_score = target['slow_score']
+    cond3 = (slow_score is not None and slow_score < MOMENTUM_THRESHOLD)
+    c3_text = "✅ 触发" if cond3 else "🟢 未触发"
+    c3_detail = f" (慢={slow_score:.4f})" if slow_score is not None else ""
 
-    fast_ok = (fast_score is not None and fast_score >= FAST_MOMENTUM_THRESHOLD)
-    fast_text = "✅ 是" if fast_ok else "❌ 否"
-    fast_detail = f" (快= {fast_score:.4f})" if fast_score is not None else ""
+    all_triggered = cond1 and cond2 and cond3
 
-    slow_ok = (slow_score is not None and slow_score >= MOMENTUM_THRESHOLD)
-    slow_text = "✅ 是" if slow_ok else "❌ 否"
-    slow_detail = f" (慢= {slow_score:.4f})" if slow_score is not None else ""
-
-    lines.append(
-        f"【风控】"
-        f" 排名第一: {rank_text}"
-        f" 快动量<{FAST_MOMENTUM_THRESHOLD}: {fast_text}{fast_detail}"
-        f" 慢动量>{MOMENTUM_THRESHOLD}: {slow_text}{slow_detail}"
-    )
+    lines.append("【风控三条件】")
+    c1 = f"① 慢动量不排第一: {c1_text}{c1_detail}"
+    c2 = f"② 快动量 < {FAST_MOMENTUM_THRESHOLD}: {c2_text}{c2_detail}"
+    c3 = f"③ 慢动量 < {MOMENTUM_THRESHOLD}: {c3_text}{c3_detail}"
+    lines.append(c1)
+    lines.append(c2)
+    lines.append(c3)
+    if all_triggered:
+        lines.append("→ 🔴 三条件全部触发！")
 
     return "\n\n".join(lines)
 
