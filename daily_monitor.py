@@ -333,9 +333,6 @@ def format_stop_loss_section(result: dict, last_trigger: bool = None) -> str:
     status = "🔴 止损" if all_triggered else "🟢 正常"
     lines.append(f"【风控】{status}，{c1} {c2} {c3}")
 
-    if all_triggered:
-        lines.append("→ 🔴 三条件全部触发！")
-
     return "\n\n".join(lines)
 
 
