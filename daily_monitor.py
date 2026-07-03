@@ -4,13 +4,13 @@
 ==========================
 策略1: 大类资产ETF动量轮动（4 ETF选最强，全部≤0 → 511880避险）
 策略2: 中证2000ETF择时（慢/快动量三条件出场，出场→511880）
-策略3: 高股息跟踪（分红历史 + TTM股息率）
+策略3: 高股息率跟踪（分红历史 + TTM股息率）
 
 数据源：新浪财经API
 同步自:
   - 1.中证2000ETF择时/backtest.py（择时出场逻辑）
   - 2.大类资产ETF轮动策略/backtest.py（轮动选股逻辑）
-  - 3.高股息跟踪/（分红解析 + 股息率计算）
+  - 3.高股息率跟踪/（分红解析 + 股息率计算）
 """
 
 import json
@@ -171,15 +171,17 @@ def format_output(ranking: list, changes: dict, recommend_cash: bool = False) ->
     else:
         change_text = "✅ 与上次一致，无变动"
 
-    lines = [f"**📊 大类资产ETF动量轮动信号**"]
+    lines = [f"**📊 大类资产ETF动量轮动**"]
 
     if recommend_cash:
-        # 全部ETF动量 ≤ 0 → 避险
         lines.append(f"**【建议持仓】 👉 {CASH_ETF_NAME} ({CASH_ETF_CODE[2:]})，🛡️ 全部ETF动量≤0，避险**")
     else:
         top_etf = ranking[0]
-        pure_code = top_etf['code'][2:]  # 去掉sh/sz前缀
-        lines.append(f"**【建议持仓】 👉 {top_etf['name']} ({pure_code})，{change_text}**")
+        pure_code = top_etf['code'][2:]
+        if changes['is_new'] or changes['top_changed'] or changes['ranking_changed']:
+            lines.append(f"**【建议持仓】 👉 {top_etf['name']} ({pure_code})，{change_text}**")
+        else:
+            lines.append(f"**【建议持仓】 👉 {top_etf['name']} ({pure_code})**")
 
     # 当前排序（单行紧凑）
     ranking_parts = []
@@ -283,18 +285,21 @@ def check_stop_loss_signal() -> dict:
     }
 
 
-def format_stop_loss_section(result: dict) -> str:
+def format_stop_loss_section(result: dict, last_trigger: bool = None) -> str:
     """格式化策略2输出（中证2000ETF择时）。"""
     target = result['target']
 
-    lines = [f"**🛡️ 中证2000ETF择时信号**"]
+    lines = [f"**🛡️ 中证2000ETF择时**"]
 
     # 建议持仓
     target_pure = STOP_LOSS_TARGET[2:]
+    changed = (last_trigger is not None and result['trigger'] != last_trigger)
     if result['trigger']:
-        lines.append(f"**【建议持仓】 👉 空仓（{CASH_ETF_NAME} {CASH_ETF_CODE[2:]}），🔴 动量止损信号触发！**")
+        tag = "，⚠️ 信号变动！" if changed else ""
+        lines.append(f"**【建议持仓】 👉 空仓（{CASH_ETF_NAME} {CASH_ETF_CODE[2:]}）{tag}**")
     else:
-        lines.append(f"**【建议持仓】 👉 {STOP_LOSS_TARGET_NAME}（{target_pure}），🟢 动量正常**")
+        tag = "，⚠️ 信号变动！" if changed else ""
+        lines.append(f"**【建议持仓】 👉 {STOP_LOSS_TARGET_NAME}（{target_pure}）{tag}**")
 
     # 慢动量排序
     all_items = []
@@ -306,39 +311,28 @@ def format_stop_loss_section(result: dict) -> str:
     all_items.sort(key=lambda x: x[2], reverse=True)
 
     ranking_parts = []
-    medals = ["🥇", "🥈", "🥉"]
     for i, (code, name, score) in enumerate(all_items):
-        prefix = medals[i] if i < 3 else ""
+        prefix = ["🥇","🥈","🥉"][i] if i < 3 else ""
         ranking_parts.append(f"{prefix} {name}: {score:.4f}")
-    lines.append(f"【{STOP_LOSS_LOOKBACK_DAYS}日慢动量排序】 {' '.join(ranking_parts)}")
+    lines.append(f"【慢动量排序】 {' '.join(ranking_parts)}")
 
-    # 风控三条件
-    # 条件①：慢动量不排第一 → 触发
+    # 风控条件
     cond1 = not result['is_rank1']
-    c1_text = "✅ 触发" if cond1 else "🟢 未触发"
-    c1_detail = f" (排第{[i+1 for i,(c,_,_) in enumerate(all_items) if c==target['code']][0] if not result['is_rank1'] else 1}名)" if all_items else ""
+    c1_detail = f"排第{[i+1 for i,(c,_,_) in enumerate(all_items) if c==target['code']][0] if not result['is_rank1'] else 1}名" if all_items else ""
+    c1 = f"① 慢动量不排第一: ✅ ({c1_detail})" if cond1 else f"① 慢动量不排第一: 🟢 (排第1名)"
 
-    # 条件②：快动量 < 0.4 → 触发
     fast_score = target['fast_score']
     cond2 = (fast_score is not None and fast_score < FAST_MOMENTUM_THRESHOLD)
-    c2_text = "✅ 触发" if cond2 else "🟢 未触发"
-    c2_detail = f" (快={fast_score:.4f})" if fast_score is not None else ""
+    c2 = f"② 快动量 < {FAST_MOMENTUM_THRESHOLD}: {'✅' if cond2 else '🟢'} (快={fast_score:.4f})" if fast_score is not None else f"② 快动量 < {FAST_MOMENTUM_THRESHOLD}: -"
 
-    # 条件③：慢动量 < 2.0 → 触发
     slow_score = target['slow_score']
     cond3 = (slow_score is not None and slow_score < MOMENTUM_THRESHOLD)
-    c3_text = "✅ 触发" if cond3 else "🟢 未触发"
-    c3_detail = f" (慢={slow_score:.4f})" if slow_score is not None else ""
+    c3 = f"③ 慢动量 < {MOMENTUM_THRESHOLD}: {'✅' if cond3 else '🟢'} (慢={slow_score:.4f})" if slow_score is not None else f"③ 慢动量 < {MOMENTUM_THRESHOLD}: -"
 
     all_triggered = cond1 and cond2 and cond3
+    status = "🔴 止损" if all_triggered else "🟢 正常"
+    lines.append(f"【风控】{status}，{c1} {c2} {c3}")
 
-    lines.append("【风控三条件】")
-    c1 = f"① 慢动量不排第一: {c1_text}{c1_detail}"
-    c2 = f"② 快动量 < {FAST_MOMENTUM_THRESHOLD}: {c2_text}{c2_detail}"
-    c3 = f"③ 慢动量 < {MOMENTUM_THRESHOLD}: {c3_text}{c3_detail}"
-    lines.append(c1)
-    lines.append(c2)
-    lines.append(c3)
     if all_triggered:
         lines.append("→ 🔴 三条件全部触发！")
 
@@ -346,8 +340,8 @@ def format_stop_loss_section(result: dict) -> str:
 
 
 # ============================================================
-# 策略3: 高股息跟踪 — TTM股息率
-# 同步自: 3.高股息跟踪/
+# 策略3: 高股息率跟踪 — TTM股息率
+# 同步自: 3.高股息率跟踪/
 # ============================================================
 FETCH_RETRY = 3
 FETCH_RETRY_DELAY = 1.0
@@ -696,7 +690,7 @@ def _fetch_dividend_prices(codes):
 
 
 def format_dividend_section():
-    """策略3：高股息跟踪。Markdown 格式，与策略1/2风格一致。"""
+    """策略3：高股息率跟踪。Markdown 格式，与策略1/2风格一致。"""
     as_of = pd.Timestamp(datetime.now())
     codes = [c for c,_ in DIVIDEND_STOCKS]
     names = {c:n for c,n in DIVIDEND_STOCKS}
@@ -721,7 +715,7 @@ def format_dividend_section():
     rows.sort(key=lambda r: r["fy_yld"] if not np.isnan(r["fy_yld"]) else -1, reverse=True)
     valid = [r for r in rows if not np.isnan(r["fy_yld"])]
 
-    lines = ["**💰 高股息跟踪**", ""]
+    lines = ["**💰 高股息率跟踪**", ""]
 
     # 摘要
     if valid:
@@ -797,14 +791,15 @@ def main():
     # 策略2: 中证2000ETF择时（慢/快动量三条件出场）
     # ═══════════════════════════════════════════════════════
     stop_loss_result = check_stop_loss_signal()
-    stop_loss_section = format_stop_loss_section(stop_loss_result)
+    last_trigger = history.get('stop_loss_history', {}).get('trigger')
+    stop_loss_section = format_stop_loss_section(stop_loss_result, last_trigger)
     print("\n" + stop_loss_section)
     output += "\n\n" + stop_loss_section
 
     # ═══════════════════════════════════════════════════════
-    # 策略3: 高股息跟踪
+    # 策略3: 高股息率跟踪
     # ═══════════════════════════════════════════════════════
-    print("\n[策略3] 正在计算高股息跟踪...")
+    print("\n[策略3] 正在计算高股息率跟踪...")
     dividend_section = format_dividend_section()
     print(dividend_section)
     output += "\n\n\n" + dividend_section
