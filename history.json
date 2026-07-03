@@ -1,6 +1,6 @@
 {
   "last_result": {
-    "date": "2026-07-02",
+    "date": "2026-07-03",
     "ranking": [
       {
         "code": "sz159915",
@@ -34,7 +34,7 @@
     "recommend_cash": false
   },
   "stop_loss_history": {
-    "date": "2026-07-02",
+    "date": "2026-07-03",
     "target": "sh563300",
     "target_slow_score": 0.46064417624067,
     "target_fast_score": -0.06907188191084178,
