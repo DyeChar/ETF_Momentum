@@ -162,26 +162,22 @@ def compare_with_last(current_ranking: list, history: dict) -> dict:
 
 def format_output(ranking: list, changes: dict, recommend_cash: bool = False) -> str:
     """格式化策略1输出（大类资产ETF轮动）。"""
-    # 变动状态
+    # 变动文本（仅在首次或有变动时显示）
+    change_tag = ""
     if changes['is_new']:
-        change_text = "首次运行，无历史对比"
+        change_tag = "，首次运行"
     elif changes['top_changed'] or changes['ranking_changed']:
         detail_str = "；".join(changes['changes_detail'])
-        change_text = f"⚠️ 有变动！{detail_str}"
-    else:
-        change_text = "✅ 与上次一致，无变动"
-
-    lines = [f"**📊 大类资产ETF动量轮动**"]
+        change_tag = f"，⚠️ {detail_str}"
 
     if recommend_cash:
-        lines.append(f"**【建议持仓】 👉 {CASH_ETF_NAME} ({CASH_ETF_CODE[2:]})，🛡️ 全部ETF动量≤0，避险**")
+        title = f"**📊 大类资产ETF动量轮动 👉 {CASH_ETF_NAME} ({CASH_ETF_CODE[2:]})，🛡️ 避险{change_tag}**"
     else:
         top_etf = ranking[0]
         pure_code = top_etf['code'][2:]
-        if changes['is_new'] or changes['top_changed'] or changes['ranking_changed']:
-            lines.append(f"**【建议持仓】 👉 {top_etf['name']} ({pure_code})，{change_text}**")
-        else:
-            lines.append(f"**【建议持仓】 👉 {top_etf['name']} ({pure_code})**")
+        title = f"**📊 大类资产ETF动量轮动 👉 {top_etf['name']} ({pure_code}){change_tag}**"
+
+    lines = [title]
 
     # 当前排序（单行紧凑）
     ranking_parts = []
@@ -289,17 +285,16 @@ def format_stop_loss_section(result: dict, last_trigger: bool = None) -> str:
     """格式化策略2输出（中证2000ETF择时）。"""
     target = result['target']
 
-    lines = [f"**🛡️ 中证2000ETF择时**"]
-
-    # 建议持仓
+    # 标题 + 建议持仓合并一行
     target_pure = STOP_LOSS_TARGET[2:]
     changed = (last_trigger is not None and result['trigger'] != last_trigger)
+    change_tag = "，⚠️ 信号变动！" if changed else ""
     if result['trigger']:
-        tag = "，⚠️ 信号变动！" if changed else ""
-        lines.append(f"**【建议持仓】 👉 空仓（{CASH_ETF_NAME} {CASH_ETF_CODE[2:]}）{tag}**")
+        title = f"**🛡️ 中证2000ETF择时 👉 空仓（{CASH_ETF_NAME} {CASH_ETF_CODE[2:]}）{change_tag}**"
     else:
-        tag = "，⚠️ 信号变动！" if changed else ""
-        lines.append(f"**【建议持仓】 👉 {STOP_LOSS_TARGET_NAME}（{target_pure}）{tag}**")
+        title = f"**🛡️ 中证2000ETF择时 👉 {STOP_LOSS_TARGET_NAME}（{target_pure}）{change_tag}**"
+
+    lines = [title]
 
     # 慢动量排序
     all_items = []
@@ -352,17 +347,13 @@ DIVIDEND_STOCKS = [
     # 白酒
     ("600519","贵州茅台"),("000858","五粮液"),("000568","泸州老窖"),
     # 消费
-    ("600887","伊利股份"),("000895","双汇发展"),
+    ("600887","伊利股份"),
     # 制造
-    ("000333","美的集团"),("000651","格力电器"),("600690","海尔智家"),("002032","苏泊尔"),
-    # 医药
-    ("600566","济川药业"),
+    ("000333","美的集团"),("600690","海尔智家"),
     # 工业/材料/基建
     ("601668","中国建筑"),("601390","中国中铁"),("601186","中国铁建"),
     # 金融/保险
     ("601318","中国平安"),
-    # 其他
-    ("002003","伟星股份"),
     # ETF
     ("563020","易方达红利低波"),
 ]
@@ -395,7 +386,6 @@ FY_OVERRIDE = {
     ("600941", 1.8942): 2022,  # 中国移动 FY2022中期
     ("601728", 0.1812): 2025,  # 中国电信 FY2025中期
     ("601728", 0.1432): 2023,  # 中国电信 FY2023中期
-    ("000895", 0.6500): 2025,  # 双汇发展 FY2025中期
     # -- 精确匹配（一次性修正）--
 }
 
