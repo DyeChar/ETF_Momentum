@@ -1,13 +1,13 @@
 {
   "last_result": {
-    "date": "2026-07-10",
+    "date": "2026-07-11",
     "ranking": [
       {
         "code": "sh510300",
         "name": "沪深300ETF",
-        "score": 0.005530091871380501,
+        "score": 0.005530091871380638,
         "annualized_return": 0.1370234968414168,
-        "r_squared": 0.04035871218336162
+        "r_squared": 0.04035871218336262
       },
       {
         "code": "sz159915",
@@ -34,7 +34,7 @@
     "recommend_cash": false
   },
   "stop_loss_history": {
-    "date": "2026-07-10",
+    "date": "2026-07-11",
     "target": "sh563300",
     "target_slow_score": -0.11803337891882869,
     "target_fast_score": -0.5387117116391633,
