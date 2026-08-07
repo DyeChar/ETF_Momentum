@@ -314,15 +314,15 @@ def format_stop_loss_section(result: dict, last_trigger: bool = None) -> str:
     # 风控条件
     cond1 = not result['is_rank1']
     c1_detail = f"排第{[i+1 for i,(c,_,_) in enumerate(all_items) if c==target['code']][0] if not result['is_rank1'] else 1}名" if all_items else ""
-    c1 = f"① 慢动量不排第一: ✅ ({c1_detail})" if cond1 else f"① 慢动量不排第一: 🟢 (排第1名)"
+    c1 = f"① 慢动量不排第一: 🔴 ({c1_detail})" if cond1 else f"① 慢动量不排第一: 🟢 (排第1名)"
 
     fast_score = target['fast_score']
     cond2 = (fast_score is not None and fast_score < FAST_MOMENTUM_THRESHOLD)
-    c2 = f"② 快动量 < {FAST_MOMENTUM_THRESHOLD}: {'✅' if cond2 else '🟢'} (快={fast_score:.4f})" if fast_score is not None else f"② 快动量 < {FAST_MOMENTUM_THRESHOLD}: -"
+    c2 = f"② 快动量 < {FAST_MOMENTUM_THRESHOLD}: {'🔴' if cond2 else '🟢'} (快={fast_score:.4f})" if fast_score is not None else f"② 快动量 < {FAST_MOMENTUM_THRESHOLD}: -"
 
     slow_score = target['slow_score']
     cond3 = (slow_score is not None and slow_score < MOMENTUM_THRESHOLD)
-    c3 = f"③ 慢动量 < {MOMENTUM_THRESHOLD}: {'✅' if cond3 else '🟢'} (慢={slow_score:.4f})" if slow_score is not None else f"③ 慢动量 < {MOMENTUM_THRESHOLD}: -"
+    c3 = f"③ 慢动量 < {MOMENTUM_THRESHOLD}: {'🔴' if cond3 else '🟢'} (慢={slow_score:.4f})" if slow_score is not None else f"③ 慢动量 < {MOMENTUM_THRESHOLD}: -"
 
     all_triggered = cond1 and cond2 and cond3
     status = "🔴 止损" if all_triggered else "🟢 正常"
