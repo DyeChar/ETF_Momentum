@@ -1,6 +1,6 @@
 {
   "last_result": {
-    "date": "2026-08-07",
+    "date": "2026-08-08",
     "ranking": [
       {
         "code": "sh518880",
@@ -34,7 +34,7 @@
     "recommend_cash": false
   },
   "stop_loss_history": {
-    "date": "2026-08-07",
+    "date": "2026-08-08",
     "target": "sh563300",
     "target_slow_score": -0.045062798612716316,
     "target_fast_score": 6.2774608434954535,
