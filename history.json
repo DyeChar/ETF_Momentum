@@ -1,6 +1,6 @@
 {
   "last_result": {
-    "date": "2026-08-08",
+    "date": "2026-08-09",
     "ranking": [
       {
         "code": "sh518880",
@@ -34,14 +34,14 @@
     "recommend_cash": false
   },
   "stop_loss_history": {
-    "date": "2026-08-08",
+    "date": "2026-08-09",
     "target": "sh563300",
     "target_slow_score": -0.045062798612716316,
-    "target_fast_score": 6.2774608434954535,
+    "target_fast_score": 6.277460843495076,
     "benchmark_scores": {
       "sz159919": -0.04936053517381747,
       "sh000015": 0.4335569458462634,
-      "sh510050": -7.572434759303868e-06
+      "sh510050": -7.572434759321076e-06
     },
     "trigger": false
   }
