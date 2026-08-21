@@ -370,6 +370,45 @@ COL_DIV10 = ("分红", "分红方案(每10股)", "派息(税前)(元)")
 COL_PROGRESS = ("分红", "进度", "进度")
 COL_EX = ("分红", "除权除息日", "除权除息日")
 
+# ── 期数推断 + 状态枚举 ─────────────────────────────
+# Sina 分红页无「期数」字段，用公告月份推断。
+# 同一笔分红的预案→实施公告日差1-3个月，自然落入相邻月份区间 → 同一 period；
+# 真实的多笔分红（中期/末期/特别）公告日差>4个月，落入不同区间。
+def infer_period(month: int) -> str:
+    """按公告月份推断分红期数。"""
+    if month in (3, 4):        return "final"      # 年报季 → 年度末期预案
+    elif month in (5, 6, 7):   return "final"      # 末期实施（预案发布后1-3月）
+    elif month in (8, 9, 10):  return "interim"    # 中期（半年报后）
+    else:                      return "special"    # 11-2月 跨年/特别分红
+
+STATUS_RANK = {"cancelled": 1, "proposal": 2, "implemented": 3}
+STATUS_MAP = {
+    "实施": "implemented",
+    "预案": "proposal",
+    "取消": "cancelled",
+    "停止": "cancelled",
+}
+
+
+def _aggregate_events(rows: list) -> list:
+    """按 event_id 状态机聚合：保留最高状态、同状态保留最新公告。
+
+    rows: 含 event_id / status / announce_date 的 dict 列表。
+    返回每个 event_id 仅一条的最终列表。
+    """
+    best = {}
+    for r in rows:
+        eid = r["event_id"]
+        if eid not in best:
+            best[eid] = r
+        elif STATUS_RANK[r["status"]] > STATUS_RANK[best[eid]["status"]]:
+            best[eid] = r      # 实施覆盖预案
+        elif STATUS_RANK[r["status"]] == STATUS_RANK[best[eid]["status"]]:
+            if r["announce_date"] >= best[eid]["announce_date"]:
+                best[eid] = r  # 同状态保留公告日期更新者
+        # 状态优先级更低 → 保留缓存中的高优先级记录
+    return list(best.values())
+
 # ── FY 覆写表 ─────────────────────────────────────────
 # 对 ≤8 规则无法正确推断的个别分红手动指定财年。
 # 支持两种 key：
@@ -471,8 +510,8 @@ def _parse_dividend_html(html_text):
     records = []
     for i in range(len(target)):
         try:
-            status = str(prog.iloc[i]).strip()
-            if status not in ("实施", "预案"):
+            status = STATUS_MAP.get(str(prog.iloc[i]).strip())
+            if status is None:
                 continue
             dv = float(d_raw.iloc[i])
             if dv <= 0:
@@ -487,108 +526,95 @@ def _parse_dividend_html(html_text):
                 "announce_date": ad,
                 "ex_date": ex if pd.notna(ex) else pd.NaT,
                 "dividend_per_10": dv,  # 每10股
-                "status": status,
+                "status": status,       # implemented / proposal / cancelled
+                "period": infer_period(ad.month),  # final / interim / special
             })
         except (ValueError, TypeError):
             continue
     return records
 
 
+def _infer_fy(code, ad, dv10, amount):
+    """FY推断：覆写优先（精确匹配 > 金额匹配），否则≤8规则。"""
+    exact_key = (code, ad.strftime("%Y-%m-%d"), dv10)
+    amount_key = (code, amount)
+    if exact_key in FY_OVERRIDE:
+        return FY_OVERRIDE[exact_key]
+    if amount_key in FY_OVERRIDE:
+        return FY_OVERRIDE[amount_key]
+    return ad.year - 1 if ad.month <= 8 else ad.year
+
+
 def _get_dividend_data(code):
     """
-    获取单只股票完整分红历史（缓存优先，Sina 增量更新）。
+    获取单只股票完整分红历史（缓存 + Sina 全量，按 event_id 状态机合并）。
 
-    返回 DataFrame: ex_date, fiscal_year, dividend_per_share, status
+    返回 DataFrame: ex_date, fiscal_year, dividend_per_share, announce_date,
+                    status, event_id, period
     """
     full_cache = _load_dividend_cache()
     stock_cache = full_cache[full_cache["code"] == code] if not full_cache.empty else full_cache
 
-    # 已缓存的 (fiscal_year, amount) 集合 —— 用于判重
-    # FY由≤8规则确定，同笔分红的预案和实施最终归入同一FY
-    known_pairs = set()
-    if not stock_cache.empty:
-        for _, r in stock_cache.iterrows():
-            known_pairs.add((int(r["fiscal_year"]), round(float(r["dividend_per_share"]), 4)))
-
-    # 从 Sina 抓取
+    # 从 Sina 抓取全量（页面一次返回全部历史，无分页）
     html = _fetch_dividend_html(code)
     sina_records = _parse_dividend_html(html) if html else []
 
-    # ── 第一遍：ALL Sina 记录按金额+公告日期近邻去重 ──
-    # 每次运行都对全部 Sina 数据聚类，再与缓存中的 (fy, amount) 比对。
-    # 同一笔分红的预案→实施，公告日差1-4个月，金额相同。
-    # 不同分红即使同金额，公告日也差6个月以上。
-    from collections import defaultdict
-    by_amount = defaultdict(list)
+    # ── 合并候选：缓存旧记录（自带 event_id）+ Sina 新记录（现算）──
+    combined = []
+    if not stock_cache.empty:
+        for _, r in stock_cache.iterrows():
+            ad = pd.Timestamp(r["announce_date"])
+            period = r.get("period", "") or infer_period(ad.month)
+            event_id = r.get("event_id", "") or f"{code}_{int(r['fiscal_year'])}_{period}"
+            combined.append({
+                "event_id": event_id,
+                "period": period,
+                "fiscal_year": int(r["fiscal_year"]) if pd.notna(r["fiscal_year"]) else 0,
+                "dividend_per_share": round(float(r["dividend_per_share"]), 4),
+                "announce_date": ad,
+                "ex_date": r["ex_date"],
+                "status": r["status"],
+            })
+
     for rec in sina_records:
-        amount = round(rec["dividend_per_10"] / 10.0, 4)
-        by_amount[amount].append(rec)
-
-    merged = []
-    for amount, recs in by_amount.items():
-        recs.sort(key=lambda r: r["announce_date"])
-        i = 0
-        while i < len(recs):
-            cluster = [recs[i]]
-            j = i + 1
-            while j < len(recs) and (recs[j]["announce_date"] - recs[i]["announce_date"]).days <= 180:
-                cluster.append(recs[j])
-                j += 1
-            impl = [r for r in cluster if r["status"] == "实施"]
-            best = impl[-1] if impl else cluster[-1]
-            merged.append(best)
-            i = j
-
-    # ── 第二遍：FY推断 + 覆写 + 缓存去重 ──
-    new_entries = []
-    for rec in merged:
         ad = rec["announce_date"]
         dv10 = rec["dividend_per_10"]
         amount = round(dv10 / 10.0, 4)
-
-        # FY推断：覆写优先（精确匹配 > 金额匹配），否则≤8规则
-        exact_key = (code, ad.strftime("%Y-%m-%d"), dv10)
-        amount_key = (code, amount)
-        if exact_key in FY_OVERRIDE:
-            fy = FY_OVERRIDE[exact_key]
-        elif amount_key in FY_OVERRIDE:
-            fy = FY_OVERRIDE[amount_key]
-        elif ad.month <= 8:
-            fy = ad.year - 1
-        else:
-            fy = ad.year
-
-        # 跳过缓存中已有的 (fy, amount) 对
-        if (fy, amount) in known_pairs:
-            continue
-
-        new_entries.append({
-            "code": code,
-            "ex_date": rec["ex_date"],
+        fy = _infer_fy(code, ad, dv10, amount)
+        combined.append({
+            "event_id": f"{code}_{fy}_{rec['period']}",
+            "period": rec["period"],
             "fiscal_year": fy,
             "dividend_per_share": amount,
             "announce_date": ad,
+            "ex_date": rec["ex_date"],
             "status": rec["status"],
         })
 
-    if new_entries:
-        new_df = pd.DataFrame(new_entries)
-        # 类型对齐
+    # ── 按 event_id 状态机聚合（预案→实施覆盖 / 同金额不同期数共存）──
+    aggregated = _aggregate_events(combined)
+
+    if aggregated:
+        new_df = pd.DataFrame(aggregated)
+        new_df["code"] = code
         for col in ["ex_date", "announce_date"]:
             if col in new_df.columns:
                 new_df[col] = pd.to_datetime(new_df[col], errors="coerce")
-        if full_cache.empty:
-            full_cache = new_df
-        else:
-            full_cache = pd.concat([full_cache, new_df], ignore_index=True)
-        full_cache = full_cache.sort_values(["code", "ex_date"], ascending=[True, False]).reset_index(drop=True)
+        # 从 full_cache 移除该股票旧行，写入聚合结果
+        full_cache = full_cache[full_cache["code"] != code] if not full_cache.empty else full_cache
+        full_cache = pd.concat([full_cache, new_df], ignore_index=True)
+        full_cache = full_cache.sort_values(
+            ["code", "fiscal_year", "announce_date"], ascending=[True, False, False]
+        ).reset_index(drop=True)
         _save_dividend_cache(full_cache)
 
     # 返回该股票数据
     stock = full_cache[full_cache["code"] == code] if not full_cache.empty else full_cache
+    cols = ["ex_date", "fiscal_year", "dividend_per_share", "announce_date",
+            "status", "event_id", "period"]
     if stock.empty:
-        return pd.DataFrame(columns=["ex_date", "fiscal_year", "dividend_per_share", "status"])
-    return stock[["ex_date", "fiscal_year", "dividend_per_share", "status"]].copy()
+        return pd.DataFrame(columns=cols)
+    return stock[cols].copy()
 
 
 def _consecutive_dividend_years(df):
@@ -613,9 +639,19 @@ def _compute_one(df, price, as_of_ts):
              "div_5y":0.0,"div_3y":0.0,"div_1y":0.0,"ttm_yield":nan,"fiscal_year":None}
     if df.empty: return empty
     df = df.copy(); df["ex_date"] = pd.to_datetime(df["ex_date"],errors="coerce")
+    df["announce_date"] = pd.to_datetime(df["announce_date"],errors="coerce")
+    # 1. 过滤取消记录
+    if "status" in df.columns:
+        df = df[df["status"] != "cancelled"]
+    # 2. 按 event_id 去重，保留最高状态（implemented > proposal）
+    if "event_id" in df.columns:
+        df["_status_rank"] = df["status"].map(STATUS_RANK).fillna(0)
+        df = (df.sort_values(["_status_rank", "announce_date"])
+              .drop_duplicates("event_id", keep="last")
+              .drop(columns=["_status_rank"]))
+    if df.empty: return empty
     # 预案无除权日→排除出TTM但保留财年统计
     df_paid = df.dropna(subset=["ex_date"])
-    if df.empty: return empty
 
     cy = _consecutive_dividend_years(df_paid if not df_paid.empty else df)
     c1 = as_of_ts-pd.DateOffset(months=12)
@@ -639,7 +675,7 @@ def _compute_one(df, price, as_of_ts):
                 fyd = round(float(fy_rows["dividend_per_share"].sum()),4)
         parts = []
         for _,r in fy_rows.iterrows():
-            tag = "(预)" if r.get("status")=="预案" else ""
+            tag = "(预)" if r.get("status")=="proposal" else ""
             parts.append(f"{r['dividend_per_share']:.4f}{tag}")
         fy_detail = "+".join(parts) if parts else f"{fyd:.4f}"
         fy_yld = round(fyd/price*100,2) if price>0 and fyd>0 else nan
