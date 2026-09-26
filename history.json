@@ -1,6 +1,6 @@
 {
   "last_result": {
-    "date": "2026-09-25",
+    "date": "2026-09-26",
     "ranking": [
       {
         "code": "sh513100",
@@ -34,7 +34,7 @@
     "recommend_cash": false
   },
   "stop_loss_history": {
-    "date": "2026-09-25",
+    "date": "2026-09-26",
     "target": "sh563300",
     "target_slow_score": 0.026443392007190793,
     "target_fast_score": 3.771626124388036,
