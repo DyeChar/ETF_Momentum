@@ -1,47 +1,47 @@
 {
   "last_result": {
-    "date": "2026-10-29",
+    "date": "2026-10-30",
     "ranking": [
       {
         "code": "sh513100",
         "name": "纳指ETF",
-        "score": 0.00020293171337496232,
-        "annualized_return": 0.0520772436019461,
-        "r_squared": 0.003896744515245021
+        "score": -0.0007852797335485363,
+        "annualized_return": -0.07494461568579325,
+        "r_squared": 0.010478134104267567
       },
       {
         "code": "sh518880",
         "name": "黄金ETF",
-        "score": -0.5178002840467856,
-        "annualized_return": -0.5951189396187151,
-        "r_squared": 0.8700786507963154
+        "score": -0.5172063393390464,
+        "annualized_return": -0.5947312675579164,
+        "r_squared": 0.8696471289676719
       },
       {
         "code": "sh510300",
         "name": "沪深300ETF",
-        "score": -0.6655411673677455,
-        "annualized_return": -0.7122794007826779,
-        "r_squared": 0.934382163286521
+        "score": -0.6765269755617982,
+        "annualized_return": -0.7182268667473963,
+        "r_squared": 0.94194050220588
       },
       {
         "code": "sz159915",
         "name": "创业板ETF",
-        "score": -0.9095125726726561,
-        "annualized_return": -0.9599198787839989,
-        "r_squared": 0.9474880068374066
+        "score": -0.9256188410420315,
+        "annualized_return": -0.9639765743201412,
+        "r_squared": 0.9602088533062517
       }
     ],
-    "recommend_cash": false
+    "recommend_cash": true
   },
   "stop_loss_history": {
-    "date": "2026-10-29",
+    "date": "2026-10-30",
     "target": "sh563300",
-    "target_slow_score": -0.7944504644445547,
-    "target_fast_score": -0.3163591270464982,
+    "target_slow_score": -0.789820139251734,
+    "target_fast_score": -0.5115302505376405,
     "benchmark_scores": {
-      "sz159919": -0.6652092350489599,
-      "sh000015": -0.00020185094448968565,
-      "sh510050": -0.30980785265641
+      "sz159919": -0.6446466638595829,
+      "sh000015": -0.00083325384147454,
+      "sh510050": -0.2502754092011789
     },
     "trigger": true
   }
