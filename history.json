@@ -1,6 +1,6 @@
 {
   "last_result": {
-    "date": "2026-11-01",
+    "date": "2026-11-02",
     "ranking": [
       {
         "code": "sh513100",
@@ -26,15 +26,15 @@
       {
         "code": "sz159915",
         "name": "创业板ETF",
-        "score": -0.9409233425494702,
+        "score": -0.9409233425494701,
         "annualized_return": -0.9691614204032422,
-        "r_squared": 0.970863390494823
+        "r_squared": 0.9708633904948228
       }
     ],
     "recommend_cash": true
   },
   "stop_loss_history": {
-    "date": "2026-11-01",
+    "date": "2026-11-02",
     "target": "sh563300",
     "target_slow_score": -0.7898545390725578,
     "target_fast_score": -0.6604145130335696,
