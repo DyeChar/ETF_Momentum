@@ -1,47 +1,47 @@
 {
   "last_result": {
-    "date": "2026-11-10",
+    "date": "2026-11-11",
     "ranking": [
       {
         "code": "sh518880",
         "name": "黄金ETF",
-        "score": -0.24897141361131178,
-        "annualized_return": -0.451664401044961,
-        "r_squared": 0.5512309870676035
+        "score": -0.19382680180562983,
+        "annualized_return": -0.4192023102183925,
+        "r_squared": 0.4623705477783545
       },
       {
         "code": "sh510300",
         "name": "沪深300ETF",
-        "score": -0.4200960622951678,
-        "annualized_return": -0.5454488070265442,
-        "r_squared": 0.770184216893381
+        "score": -0.36993152023221904,
+        "annualized_return": -0.512496803424947,
+        "r_squared": 0.7218221026160878
       },
       {
         "code": "sh513100",
         "name": "纳指ETF",
-        "score": -0.48154827453151516,
-        "annualized_return": -0.621934151743539,
-        "r_squared": 0.7742753363543968
+        "score": -0.5263608322056029,
+        "annualized_return": -0.6403411478049228,
+        "r_squared": 0.8220006382690818
       },
       {
         "code": "sz159915",
         "name": "创业板ETF",
-        "score": -0.8345132423425575,
-        "annualized_return": -0.9316384582769263,
-        "r_squared": 0.8957479534346374
+        "score": -0.7962394005967197,
+        "annualized_return": -0.9171931041562158,
+        "r_squared": 0.8681262397074287
       }
     ],
     "recommend_cash": true
   },
   "stop_loss_history": {
-    "date": "2026-11-10",
+    "date": "2026-11-11",
     "target": "sh563300",
-    "target_slow_score": -0.4824635771078641,
-    "target_fast_score": 0.0009130325829563195,
+    "target_slow_score": -0.3079694659762366,
+    "target_fast_score": 0.093706070379434,
     "benchmark_scores": {
-      "sz159919": null,
-      "sh000015": -0.033909077265090244,
-      "sh510050": 0.011424197617800176
+      "sz159919": -0.1613802247485031,
+      "sh000015": -0.020180285982325144,
+      "sh510050": 0.04859219172669816
     },
     "trigger": true
   }
